@@ -3,12 +3,15 @@ import * as XLSX from 'xlsx';
 
 import type { AdsRecord, ImportBatch, ImportPreview, MappingResult, ReportType } from './types';
 
-export type MappingTarget = 'date' | 'store' | 'campaign' | 'adGroup' | 'adType' | 'status' | 'spend' | 'sales' | 'orders' | 'impressions' | 'clicks' | 'dailyBudget';
+export type MappingTarget = 'date' | 'store' | 'campaign' | 'adGroup' | 'portfolio' | 'placement' | 'searchTerm' | 'searchTermTranslation' | 'target' | 'matchType' | 'adType' | 'status' | 'spend' | 'sales' | 'orders' | 'impressions' | 'clicks' | 'dailyBudget';
 type Target = MappingTarget;
 
 export const MAPPING_TARGET_OPTIONS: { value: MappingTarget; label: string }[] = [
   { value: 'date', label: '日期' }, { value: 'store', label: '店铺' },
   { value: 'campaign', label: '广告活动' }, { value: 'adGroup', label: '广告组' },
+  { value: 'portfolio', label: '广告组合' }, { value: 'placement', label: '广告位' },
+  { value: 'searchTerm', label: '用户搜索词' }, { value: 'searchTermTranslation', label: '搜索词翻译' },
+  { value: 'target', label: '投放词/商品' }, { value: 'matchType', label: '匹配类型' },
   { value: 'adType', label: '广告类型' }, { value: 'status', label: '广告状态' },
   { value: 'spend', label: '广告花费' }, { value: 'sales', label: '广告销售额' },
   { value: 'orders', label: '广告订单量' }, { value: 'impressions', label: '广告曝光量' },
@@ -18,9 +21,15 @@ export const MAPPING_TARGET_OPTIONS: { value: MappingTarget; label: string }[] =
 const ALIASES: Partial<Record<Target, string[]>> = {
   date: ['日期', '时间', '统计日期', '报告日期', 'date'],
   store: ['店铺名称', '店铺', '站点店铺', 'store'],
-  campaign: ['广告活动', '广告活动名称', 'campaign name', 'campaign'],
-  adGroup: ['广告组', '广告组名称', 'ad group name', 'ad group'],
-  adType: ['广告类型', '投放类型', 'campaign type', '广告活动类型'],
+  campaign: ['广告活动', '广告活动名称', '所在广告活动', '所属广告活动', 'campaign name', 'campaign'],
+  adGroup: ['广告组', '广告组名称', '所在广告组', '所属广告组', 'ad group name', 'ad group'],
+  portfolio: ['广告组合', 'portfolio'],
+  placement: ['广告位', 'placement'],
+  searchTerm: ['用户搜索词', '搜索词', 'customer search term', 'search term'],
+  searchTermTranslation: ['用户搜索词翻译', '搜索词翻译'],
+  target: ['投放', '投放词', '投放商品', 'targeting', 'target'],
+  matchType: ['匹配类型', 'match type'],
+  adType: ['广告类型', '投放类型', '活动类型', 'campaign type', '广告活动类型'],
   status: ['有效状态', '广告状态', '状态', 'status', '活动状态'],
   spend: ['广告花费', '花费', '支出', 'spend', 'cost'],
   sales: ['广告销售额', '销售额', '7天广告销售额', '14天广告销售额', 'sales'],
@@ -64,6 +73,8 @@ export function parseDate(value: unknown): string | null {
 
 function inferReportType(mappings: MappingResult[]): ReportType {
   const targets = new Set(mappings.map((m) => m.target));
+  if (targets.has('searchTerm')) return 'searchTerm';
+  if (targets.has('placement')) return 'placement';
   if (targets.has('adGroup')) return 'adGroup';
   if (targets.has('campaign')) return 'campaign';
   return 'unknown';
@@ -83,12 +94,18 @@ function recordsFromRows(
     const date = parseDate(valueFor(raw, mappings, 'date'));
     const campaign = valueFor(raw, mappings, 'campaign');
     if (!date) errors.push(`第 ${index + 2} 行缺少或无法识别日期`);
-    if (reportType === 'campaign' && !campaign) errors.push(`第 ${index + 2} 行缺少广告活动名称`);
+    if (['campaign', 'searchTerm', 'placement'].includes(reportType) && !campaign) errors.push(`第 ${index + 2} 行缺少广告活动名称`);
     return {
       id: `${fingerprint}:${index + 2}`, importId, product, reportType, date,
       store: String(valueFor(raw, mappings, 'store') ?? '').trim() || null,
       campaign: String(campaign ?? '').trim() || null,
       adGroup: String(valueFor(raw, mappings, 'adGroup') ?? '').trim() || null,
+      portfolio: String(valueFor(raw, mappings, 'portfolio') ?? '').trim() || null,
+      placement: String(valueFor(raw, mappings, 'placement') ?? '').trim() || null,
+      searchTerm: String(valueFor(raw, mappings, 'searchTerm') ?? '').trim() || null,
+      searchTermTranslation: String(valueFor(raw, mappings, 'searchTermTranslation') ?? '').trim() || null,
+      target: String(valueFor(raw, mappings, 'target') ?? '').trim() || null,
+      matchType: String(valueFor(raw, mappings, 'matchType') ?? '').trim() || null,
       adType: String(valueFor(raw, mappings, 'adType') ?? '').trim() || null,
       status: String(valueFor(raw, mappings, 'status') ?? '').trim() || null,
       spend: parseNumber(valueFor(raw, mappings, 'spend')),
@@ -111,7 +128,7 @@ function previewMetadata(records: AdsRecord[], fileName: string, reportType: Rep
   if (fileStoreHint && stores.length && !stores.includes(fileStoreHint)) {
     warnings.push(`文件名中的店铺 ${fileStoreHint} 与表内店铺 ${stores.join('、')} 不一致，请核对数据归属；系统不会修改原始店铺名称。`);
   }
-  if (reportType === 'unknown') warnings.push('未识别到广告活动或广告组字段，请确认字段映射。');
+  if (reportType === 'unknown') warnings.push('未识别到广告活动、广告组、搜索词或广告位字段，请确认字段映射。');
   return { dates, stores, warnings };
 }
 

@@ -1,4 +1,4 @@
-export type ReportType = 'campaign' | 'adGroup' | 'placement' | 'unknown';
+export type ReportType = 'campaign' | 'adGroup' | 'searchTerm' | 'placement' | 'unknown';
 
 export interface AdsRecord {
   id: string;
@@ -9,6 +9,12 @@ export interface AdsRecord {
   store: string | null;
   campaign: string | null;
   adGroup: string | null;
+  portfolio?: string | null;
+  placement?: string | null;
+  searchTerm?: string | null;
+  searchTermTranslation?: string | null;
+  target?: string | null;
+  matchType?: string | null;
   adType: string | null;
   status: string | null;
   spend: number | null;
@@ -41,7 +47,7 @@ export interface ImportBatch {
 
 export interface MappingResult {
   source: string;
-  target: 'date' | 'store' | 'campaign' | 'adGroup' | 'adType' | 'status' | 'spend' | 'sales' | 'orders' | 'impressions' | 'clicks' | 'dailyBudget' | null;
+  target: 'date' | 'store' | 'campaign' | 'adGroup' | 'portfolio' | 'placement' | 'searchTerm' | 'searchTermTranslation' | 'target' | 'matchType' | 'adType' | 'status' | 'spend' | 'sales' | 'orders' | 'impressions' | 'clicks' | 'dailyBudget' | null;
   status: 'matched' | 'unconfirmed';
 }
 

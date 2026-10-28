@@ -41,7 +41,7 @@ export async function saveImport(batch: ImportBatch, records: AdsRecord[]) {
 }
 
 export function uniqueBusinessKey(row: AdsRecord) {
-  return [row.product, row.reportType, row.store, row.date, row.campaign, row.adGroup].map((v) => v ?? '').join('|');
+  return [row.product, row.reportType, row.store, row.date, row.campaign, row.adGroup, row.portfolio, row.placement, row.searchTerm, row.target, row.matchType].map((v) => v ?? '').join('|');
 }
 
 export async function deleteImport(importId: string) {

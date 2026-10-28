@@ -16,7 +16,7 @@ const isNullableNumber = (value: unknown) => value === null || (typeof value ===
 function isAdsRecord(value: unknown): value is AdsRecord {
   if (!isObject(value) || !isObject(value.raw)) return false;
   return typeof value.id === 'string' && typeof value.importId === 'string'
-    && ['campaign', 'adGroup', 'placement', 'unknown'].includes(String(value.reportType))
+    && ['campaign', 'adGroup', 'searchTerm', 'placement', 'unknown'].includes(String(value.reportType))
     && ['date', 'store', 'campaign', 'adGroup', 'adType', 'status'].every((field) => isNullableString(value[field]))
     && ['spend', 'sales', 'orders', 'impressions', 'clicks', 'dailyBudget'].every((field) => isNullableNumber(value[field]));
 }

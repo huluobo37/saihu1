@@ -18,7 +18,7 @@ import * as XLSX from 'xlsx';
 import { calculateMetrics, groupRecords } from './metrics';
 import { buildTrendData, MOVING_AVERAGE_COLORS, type MovingAverageWindow, type TrendMetric, type TrendPoint } from './chartData';
 import { MAPPING_TARGET_OPTIONS, parseExcel, remapPreview, type MappingTarget } from './excel';
-import type { AdsRecord, Metrics } from './types';
+import type { AdsRecord, Metrics, ReportType } from './types';
 import { useAds } from './AdsContext';
 import { getSetting, replaceAll, setSetting } from './db';
 import { getCurrentSession, isSupabaseConfigured, signIn, signOut, signUp, subscribeToAuth, syncWithSupabase } from './supabase';
@@ -29,6 +29,7 @@ const money = (value: number | null) => value === null ? '—' : value.toLocaleS
 const integer = (value: number | null) => value === null ? '—' : value.toLocaleString('zh-CN', { maximumFractionDigits: 0 });
 const percent = (value: number | null) => value === null ? '—' : `${(value * 100).toFixed(2)}%`;
 const multiple = (value: number | null) => value === null ? '—' : value.toFixed(2);
+const reportTypeLabel = (value: ReportType) => ({ campaign: '广告活动日报', adGroup: '广告组日报', searchTerm: '搜索词日报', placement: '广告位日报', unknown: '待确认' })[value];
 
 function PageTitle({ title, subtitle, extra }: { title: string; subtitle: string; extra?: ReactNode }) {
   return <Flex justify="space-between" align="flex-start" gap={16} wrap><div><Title level={2} style={{ marginBottom: 4 }}>{title}</Title><Text type="secondary">{subtitle}</Text></div>{extra}</Flex>;
@@ -39,10 +40,12 @@ function NoData() {
   return <Card style={{ marginTop: 24 }}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<Space orientation="vertical"><Text strong>尚未导入广告数据</Text><Text type="secondary">请选择赛虎 ERP 导出的 .xlsx 广告报表。系统不会填充示例业务数据。</Text></Space>}><Button type="primary" icon={<UploadOutlined />} onClick={() => void navigate('/import')}>导入 Excel</Button></Empty></Card>;
 }
 
-function DataScope() {
+function DataScope({ reportTypes = ['campaign'] }: { reportTypes?: ReportType[] }) {
   const { records, filtered, filters, setFilters } = useAds();
-  const unique = (field: 'product' | 'store' | 'campaign' | 'adType' | 'status') => [...new Set(records.map((r) => field === 'product' ? (r.product ?? '未分类产品') : r[field]).filter((v): v is string => Boolean(v)))].sort();
-  const dates = [...new Set(records.map((record) => record.date).filter((value): value is string => Boolean(value)))].sort();
+  const scopedRecords = records.filter((record) => reportTypes.includes(record.reportType));
+  const scopedFiltered = filtered.filter((record) => reportTypes.includes(record.reportType));
+  const unique = (field: 'product' | 'store' | 'campaign' | 'adType' | 'status') => [...new Set(scopedRecords.map((r) => field === 'product' ? (r.product ?? '未分类产品') : r[field]).filter((v): v is string => Boolean(v)))].sort();
+  const dates = [...new Set(scopedRecords.map((record) => record.date).filter((value): value is string => Boolean(value)))].sort();
   const maxDate = dates.length ? dayjs(dates.at(-1)) : null;
   const presets = maxDate ? [
     { label: '最近 7 日', value: [maxDate.subtract(6, 'day'), maxDate] as [Dayjs, Dayjs] },
@@ -54,7 +57,7 @@ function DataScope() {
     <Text strong>所有折线图日期范围</Text>
     <DatePicker.RangePicker presets={presets} value={filters.dateRange ? [dayjs(filters.dateRange[0]), dayjs(filters.dateRange[1])] : null} onChange={(values) => setFilters({ ...filters, dateRange: values ? [values[0]!.format('YYYY-MM-DD'), values[1]!.format('YYYY-MM-DD')] : null })} />
     {(['product', 'store', 'campaign', 'adType', 'status'] as const).map((field) => <Select key={field} allowClear showSearch style={{ minWidth: field === 'campaign' ? 220 : field === 'product' ? 180 : 140 }} placeholder={{ product: '全部产品', store: '全部店铺', campaign: '全部广告活动', adType: '全部广告类型', status: '全部状态' }[field]} value={filters[field]} options={unique(field).map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, [field]: value ?? null })} />)}
-    <Tag color="blue">{filtered.length} / {records.length} 条</Tag>
+    <Tag color="blue">{scopedFiltered.length} / {scopedRecords.length} 条</Tag>
   </Flex></Card>;
 }
 
@@ -85,7 +88,7 @@ function CampaignCharts({ rows }: { rows: AdsRecord[] }) {
   ] as const;
   const [metric, setMetric] = useState<(typeof metricOptions)[number]['value']>('spend');
   const config = metricOptions.find((option) => option.value === metric)!;
-  const data = groupRecords(rows, (r) => r.campaign ?? '未命名活动').sort((a, b) => (b[metric] ?? -1) - (a[metric] ?? -1)).map((item, index) => ({ ...item, rank: index + 1 }));
+  const data = groupRecords(rows, (r) => `${r.product ?? '未分类产品'} · ${r.campaign ?? '未命名活动'}`).sort((a, b) => (b[metric] ?? -1) - (a[metric] ?? -1)).map((item, index) => ({ ...item, rank: index + 1, product: item.records[0]?.product ?? '未分类产品', campaign: item.records[0]?.campaign ?? '未命名活动' }));
   if (!data.length) return null;
   const chartHeight = Math.max(460, data.length * 42 + 86);
   return <Card style={{ marginTop: 16, overflow: 'hidden' }} title={<Space orientation="vertical" size={0}><Text strong style={{ fontSize: 16 }}>广告活动表现排行</Text><Text type="secondary" style={{ fontSize: 12 }}>按所选指标从高到低排列，点击名称查看每日明细</Text></Space>} extra={<Space wrap><Tag color="blue">{data.length} 个活动</Tag><Select aria-label="选择广告活动对比指标" value={metric} style={{ width: 160 }} options={metricOptions.map(({ value, label }) => ({ value, label }))} onChange={setMetric} /></Space>}>
@@ -97,7 +100,8 @@ function CampaignCharts({ rows }: { rows: AdsRecord[] }) {
       const name = String(props.payload.value);
       const label = name.length > 34 ? `${name.slice(0, 33)}…` : name;
       const rank = data.find((item) => item.name === name)?.rank ?? 0;
-      return <g transform={`translate(${props.x},${props.y})`} style={{ cursor: 'pointer' }} onClick={() => void navigate(`/campaign-detail?campaign=${encodeURIComponent(name)}`)}><title>{`查看 ${name}`}</title><text x={-10} y={0} dy={4} textAnchor="end" fontSize={12}><tspan fill="#F59E0B" fontWeight={700}>{String(rank).padStart(2, '0')}</tspan><tspan fill="#3B82F6">　{label}　›</tspan></text></g>;
+      const row = data.find((item) => item.name === name);
+      return <g transform={`translate(${props.x},${props.y})`} style={{ cursor: 'pointer' }} onClick={() => row && void navigate(`/campaign-detail?campaign=${encodeURIComponent(row.campaign)}&product=${encodeURIComponent(row.product)}`)}><title>{`查看 ${name}`}</title><text x={-10} y={0} dy={4} textAnchor="end" fontSize={12}><tspan fill="#F59E0B" fontWeight={700}>{String(rank).padStart(2, '0')}</tspan><tspan fill="#3B82F6">　{label}　›</tspan></text></g>;
     }} />
       <Tooltip cursor={{ fill: '#94A3B8', fillOpacity: 0.08 }} contentStyle={{ borderRadius: 10, border: '1px solid rgba(148, 163, 184, 0.35)', boxShadow: '0 8px 24px rgba(15, 23, 42, 0.12)' }} labelFormatter={(label) => `${String(label)}（点击名称查看详情）`} formatter={(value) => typeof value === 'number' ? config.formatter(value) : value} />
       <Bar dataKey={metric} name={config.label} fill={`url(#campaign-bar-${metric})`} radius={[0, 7, 7, 0]} maxBarSize={24} background={{ fill: '#94A3B8', fillOpacity: 0.08, radius: 7 }}><LabelList dataKey={metric} position="right" offset={10} formatter={(value: unknown) => typeof value === 'number' ? config.formatter(value) : ''} style={{ fontSize: 12, fontWeight: 600 }} /></Bar>
@@ -106,14 +110,14 @@ function CampaignCharts({ rows }: { rows: AdsRecord[] }) {
 }
 
 export function OverviewPage() {
-  const { records, filtered } = useAds(); const dates = [...new Set(filtered.map((r) => r.date).filter(Boolean))].sort();
-  return <><PageTitle title="数据总览" subtitle="所有指标均由当前筛选范围内的原始记录重新汇总计算" extra={records.length ? <Tag color="processing">本地数据</Tag> : undefined} /><DataScope />{!records.length ? <NoData /> : <><Alert style={{ marginTop: 16 }} type={dates.length === 1 ? 'info' : 'success'} showIcon title={dates.length === 1 ? `当前数据日期：${dates[0]}。这是单日数据，不代表长期平均水平。` : `当前包含 ${dates.length} 个日期：${dates[0]} 至 ${dates.at(-1)}`} /><MetricCards metrics={calculateMetrics(filtered)} /><CampaignCharts rows={filtered} /></>}</>;
+  const { records, filtered } = useAds(); const campaignRecords = records.filter((row) => row.reportType === 'campaign'); const campaignRows = filtered.filter((row) => row.reportType === 'campaign'); const dates = [...new Set(campaignRows.map((r) => r.date).filter(Boolean))].sort();
+  return <><PageTitle title="数据总览" subtitle="总览只汇总广告活动日报，避免与搜索词和广告位报表重复计算" extra={campaignRecords.length ? <Tag color="processing">活动日报口径</Tag> : undefined} /><DataScope />{!campaignRecords.length ? <NoData /> : <><Alert style={{ marginTop: 16 }} type={dates.length === 1 ? 'info' : 'success'} showIcon title={dates.length === 1 ? `当前数据日期：${dates[0]}。这是单日数据，不代表长期平均水平。` : `当前包含 ${dates.length} 个日期：${dates[0]} 至 ${dates.at(-1)}`} /><MetricCards metrics={calculateMetrics(campaignRows)} /><CampaignCharts rows={campaignRows} /></>}</>;
 }
 
 const recordColumns: ColumnsType<AdsRecord> = [
   { title: '日期', dataIndex: 'date', fixed: 'left', width: 110, sorter: (a, b) => (a.date ?? '').localeCompare(b.date ?? '') },
   { title: '产品', dataIndex: 'product', width: 130, render: (value: string | null) => value ?? '未分类产品' },
-  { title: '店铺', dataIndex: 'store', width: 100 }, { title: '广告活动', dataIndex: 'campaign', fixed: 'left', width: 240, ellipsis: true, render: (value: string | null) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}`}>{value}</Link> : '—' },
+  { title: '店铺', dataIndex: 'store', width: 100 }, { title: '广告活动', dataIndex: 'campaign', fixed: 'left', width: 240, ellipsis: true, render: (value: string | null, row) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}`}>{value}</Link> : '—' },
   { title: '花费', dataIndex: 'spend', width: 105, align: 'right', render: money, sorter: (a, b) => (a.spend ?? -1) - (b.spend ?? -1) },
   { title: '销售额', dataIndex: 'sales', width: 105, align: 'right', render: money, sorter: (a, b) => (a.sales ?? -1) - (b.sales ?? -1) },
   { title: '订单', dataIndex: 'orders', width: 80, align: 'right', render: integer, sorter: (a, b) => (a.orders ?? -1) - (b.orders ?? -1) }, { title: '曝光', dataIndex: 'impressions', width: 100, align: 'right', render: integer, sorter: (a, b) => (a.impressions ?? -1) - (b.impressions ?? -1) }, { title: '点击', dataIndex: 'clicks', width: 80, align: 'right', render: integer, sorter: (a, b) => (a.clicks ?? -1) - (b.clicks ?? -1) },
@@ -125,9 +129,10 @@ const recordColumns: ColumnsType<AdsRecord> = [
 
 export function CampaignPage() {
   const { records, filtered } = useAds(); const [search, setSearch] = useState(''); const [raw, setRaw] = useState<AdsRecord | null>(null);
-  const rows = filtered.filter((r) => !search || (r.campaign ?? '').toLowerCase().includes(search.toLowerCase()));
+  const campaignRecords = records.filter((row) => row.reportType === 'campaign');
+  const rows = filtered.filter((r) => r.reportType === 'campaign' && (!search || (r.campaign ?? '').toLowerCase().includes(search.toLowerCase())));
   const exportRows = () => { const sheet = XLSX.utils.json_to_sheet(rows.map((r) => ({ 产品: r.product ?? '未分类产品', 日期: r.date, 店铺名称: r.store, 广告活动: r.campaign, 广告花费: r.spend, 广告销售额: r.sales, 广告订单量: r.orders, 广告曝光量: r.impressions, 广告点击量: r.clicks, ACOS: calculateMetrics([r]).acos, CPC: calculateMetrics([r]).cpc, CTR: calculateMetrics([r]).ctr, 转化率: calculateMetrics([r]).conversionRate, ROAS: calculateMetrics([r]).roas, 每日预算: r.dailyBudget, 广告类型: r.adType, 有效状态: r.status }))); const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, '广告活动'); XLSX.writeFile(book, '广告活动筛选结果.xlsx'); };
-  return <><PageTitle title="广告活动分析" subtitle="广告活动日报与重新计算指标；不会把广告活动误标为广告组" extra={<Button icon={<DownloadOutlined />} disabled={!rows.length} onClick={exportRows}>导出筛选结果</Button>} /><DataScope />{!records.length ? <NoData /> : <Card style={{ marginTop: 16 }}><Input.Search allowClear style={{ maxWidth: 360, marginBottom: 16 }} placeholder="搜索广告活动名称" onSearch={setSearch} onChange={(e) => setSearch(e.target.value)} /><Table rowKey="id" size="small" columns={[...recordColumns, { title: '原始记录', fixed: 'right', width: 100, render: (_, row) => <Button type="link" onClick={() => setRaw(row)}>查看</Button> }]} dataSource={rows} scroll={{ x: 1750 }} pagination={{ pageSize: 20, showSizeChanger: true }} /><Modal width={760} open={Boolean(raw)} onCancel={() => setRaw(null)} footer={null} title="完整原始记录"><Descriptions bordered size="small" column={1} items={Object.entries(raw?.raw ?? {}).map(([label, value]) => ({ key: label, label, children: value === null ? <Text type="secondary">null</Text> : String(value) }))} /></Modal></Card>}</>;
+  return <><PageTitle title="广告活动分析" subtitle="广告活动日报与重新计算指标；搜索词和广告位另行关联展示，不重复计入" extra={<Button icon={<DownloadOutlined />} disabled={!rows.length} onClick={exportRows}>导出筛选结果</Button>} /><DataScope />{!campaignRecords.length ? <NoData /> : <Card style={{ marginTop: 16 }}><Input.Search allowClear style={{ maxWidth: 360, marginBottom: 16 }} placeholder="搜索广告活动名称" onSearch={setSearch} onChange={(e) => setSearch(e.target.value)} /><Table rowKey="id" size="small" columns={[...recordColumns, { title: '原始记录', fixed: 'right', width: 100, render: (_, row) => <Button type="link" onClick={() => setRaw(row)}>查看</Button> }]} dataSource={rows} scroll={{ x: 1900 }} pagination={{ pageSize: 20, showSizeChanger: true }} /><Modal width={760} open={Boolean(raw)} onCancel={() => setRaw(null)} footer={null} title="完整原始记录"><Descriptions bordered size="small" column={1} items={Object.entries(raw?.raw ?? {}).map(([label, value]) => ({ key: label, label, children: value === null ? <Text type="secondary">null</Text> : String(value) }))} /></Modal></Card>}</>;
 }
 
 function TrendMetricChart({ title, data, metric, formatter, tickFormatter, windows, rawColor }: {
@@ -170,12 +175,16 @@ function MovingAverageControls({ windows, setWindows }: { windows: MovingAverage
 export function CampaignDetailPage() {
   const [searchParams] = useSearchParams();
   const campaignName = searchParams.get('campaign') ?? '';
+  const productName = searchParams.get('product');
   const navigate = useNavigate();
   const { records } = useAds();
   const [dateRange, setDateRange] = useState<[string, string] | null>(null);
   const [windows, setWindows] = useState<MovingAverageWindow[]>([5, 10, 30]);
   useEffect(() => setDateRange(null), [campaignName]);
-  const campaignRows = records.filter((record) => record.campaign === campaignName || (!record.campaign && campaignName === '未命名活动'));
+  const sameCampaign = (record: AdsRecord) => (record.campaign === campaignName || (!record.campaign && campaignName === '未命名活动')) && (!productName || (record.product ?? '未分类产品') === productName);
+  const campaignRows = records.filter((record) => record.reportType === 'campaign' && sameCampaign(record));
+  const relatedSearchTerms = records.filter((record) => record.reportType === 'searchTerm' && sameCampaign(record));
+  const relatedPlacements = records.filter((record) => record.reportType === 'placement' && sameCampaign(record));
   const campaignDates = [...new Set(campaignRows.map((record) => record.date).filter((value): value is string => Boolean(value)))].sort();
   const rows = campaignRows.filter((record) => !dateRange || Boolean(record.date && record.date >= dateRange[0] && record.date <= dateRange[1]));
   const dates = [...new Set(rows.map((record) => record.date).filter((value): value is string => Boolean(value)))].sort();
@@ -191,29 +200,58 @@ export function CampaignDetailPage() {
   const stores = [...new Set(campaignRows.map((record) => record.store).filter(Boolean))].join('、');
   return <>
     <Button icon={<ArrowLeftOutlined />} onClick={() => void navigate('/campaigns')}>返回广告活动</Button>
-    <PageTitle title={campaignName || '未命名活动'} subtitle="该广告活动的每日数据、汇总指标及移动平均趋势" extra={<Space wrap><Tag>{stores || '未知店铺'}</Tag><Tag color="blue">{rows.length} 条记录</Tag></Space>} />
+    <PageTitle title={campaignName || '未命名活动'} subtitle="该广告活动的每日数据、汇总指标，以及自动关联的搜索词和广告位" extra={<Space wrap><Tag color="purple">{productName || campaignRows[0]?.product || '未分类产品'}</Tag><Tag>{stores || '未知店铺'}</Tag><Tag color="blue">{rows.length} 条活动记录</Tag></Space>} />
     <Card size="small" style={{ marginTop: 20 }}><Flex gap={12} align="center" wrap><Text strong>所有折线图日期范围</Text><DatePicker.RangePicker aria-label="选择广告活动日期范围" presets={presets} value={dateRange ? [dayjs(dateRange[0]), dayjs(dateRange[1])] : null} onChange={(values) => setDateRange(values ? [values[0]!.format('YYYY-MM-DD'), values[1]!.format('YYYY-MM-DD')] : null)} /><Text type="secondary">{dates.length ? `${dates[0]} 至 ${dates.at(-1)}，逐日显示，共 ${dates.length} 日` : '所选日期无数据'}</Text></Flex></Card>
     {!rows.length ? <Card style={{ marginTop: 16 }}><Empty description="所选日期范围内没有数据" /></Card> : <>
       <MetricCards metrics={calculateMetrics(rows)} />
       <div style={{ marginTop: 16 }}><MovingAverageControls windows={windows} setWindows={setWindows} /></div>
       {dates.length < 30 && windows.includes(30) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前只有 ${dates.length} 个有效日期，30 日移动平均将在第 30 个有效日期后开始显示。`} />}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{metricCharts.map((chart) => <Col xs={24} xl={12} key={chart.metric}><TrendMetricChart title={chart.title} data={data} metric={chart.metric} formatter={chart.formatter} tickFormatter={chart.tickFormatter} windows={windows} rawColor={chart.color} /></Col>)}</Row>
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={24} xl={12}><Card title={`关联搜索词（${relatedSearchTerms.length} 条）`} extra={<Link to={`/search-terms?campaign=${encodeURIComponent(campaignName)}&product=${encodeURIComponent(productName || campaignRows[0]?.product || '')}`}>查看全部</Link>}><Table size="small" rowKey="id" dataSource={relatedSearchTerms.slice(0, 8)} pagination={false} columns={[{ title: '日期', dataIndex: 'date', width: 105 }, { title: '搜索词', dataIndex: 'searchTerm', ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', ellipsis: true }, { title: '花费', dataIndex: 'spend', width: 80, render: money }, { title: '订单', dataIndex: 'orders', width: 65, render: integer }]} locale={{ emptyText: '尚未导入该活动的搜索词报表' }} /></Card></Col>
+        <Col xs={24} xl={12}><Card title={`关联广告位（${relatedPlacements.length} 条）`} extra={<Link to={`/placements?campaign=${encodeURIComponent(campaignName)}&product=${encodeURIComponent(productName || campaignRows[0]?.product || '')}`}>查看全部</Link>}><Table size="small" rowKey="id" dataSource={relatedPlacements.slice(0, 8)} pagination={false} columns={[{ title: '日期', dataIndex: 'date', width: 105 }, { title: '广告位', dataIndex: 'placement', ellipsis: true }, { title: '花费', dataIndex: 'spend', width: 80, render: money }, { title: '销售额', dataIndex: 'sales', width: 90, render: money }, { title: '订单', dataIndex: 'orders', width: 65, render: integer }]} locale={{ emptyText: '尚未导入该活动的广告位报表' }} /></Card></Col>
+      </Row>
     </>}
   </>;
 }
 
 export function TrendsPage() {
-  const { records, filtered } = useAds(); const dates = [...new Set(filtered.map((r) => r.date).filter((v): v is string => Boolean(v)))].sort();
-  const data = buildTrendData(filtered);
+  const { records, filtered } = useAds(); const campaignRecords = records.filter((row) => row.reportType === 'campaign'); const rows = filtered.filter((row) => row.reportType === 'campaign'); const dates = [...new Set(rows.map((r) => r.date).filter((v): v is string => Boolean(v)))].sort();
+  const data = buildTrendData(rows);
   const [windows, setWindows] = useState<MovingAverageWindow[]>([5, 10, 30]);
-  return <><PageTitle title="趋势分析" subtitle="按日期聚合；移动平均使用严格尾随窗口，不足窗口天数时不显示" /><DataScope />{!records.length ? <NoData /> : dates.length < 2 ? <><Alert style={{ marginTop: 16 }} type="warning" showIcon title="日期数量不足，暂不能判断趋势" description="当前仅有一个数据日期。下方保留单日汇总，未生成伪造折线。" /><MetricCards metrics={calculateMetrics(filtered)} /></> : <>
+  return <><PageTitle title="趋势分析" subtitle="按广告活动日报日期聚合；搜索词和广告位数据不会重复计入" /><DataScope />{!campaignRecords.length ? <NoData /> : dates.length < 2 ? <><Alert style={{ marginTop: 16 }} type="warning" showIcon title="日期数量不足，暂不能判断趋势" description="当前仅有一个数据日期。下方保留单日汇总，未生成伪造折线。" /><MetricCards metrics={calculateMetrics(rows)} /></> : <>
     <div style={{ marginTop: 16 }}><MovingAverageControls windows={windows} setWindows={setWindows} /></div>
     {dates.length < 30 && windows.includes(30) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前只有 ${dates.length} 个有效日期，30 日移动平均将在第 30 个有效日期后开始显示。`} />}
     <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{metricCharts.map((chart) => <Col xs={24} xl={12} key={chart.metric}><TrendMetricChart title={chart.title} data={data} metric={chart.metric} formatter={chart.formatter} tickFormatter={chart.tickFormatter} windows={windows} rawColor={chart.color} /></Col>)}</Row>
   </>}</>;
 }
 
-export function PlacementPage() { return <><PageTitle title="广告位分析" subtitle="此模块只接受真实的广告位表现报告" /><Card style={{ marginTop: 20 }}><Result icon={<DatabaseOutlined />} title="尚无广告位表现数据" subTitle="当前广告活动日报中的“搜索结果顶部（首页）广告位”等字段可能是竞价调整比例，不能未经确认当作曝光量。请导入包含广告位、曝光、点击、花费和销售额的广告位表现报告。" extra={<Tag>所需字段：日期、广告活动、广告位、曝光、点击、花费、销售额</Tag>} /></Card></> }
+const relationKey = (row: AdsRecord) => [row.product ?? '未分类产品', row.store ?? '', row.campaign ?? ''].join('|');
+
+export function SearchTermsPage() {
+  const { records, filtered } = useAds(); const [params] = useSearchParams(); const [search, setSearch] = useState('');
+  const campaignParam = params.get('campaign'); const productParam = params.get('product');
+  const campaignKeys = new Set(records.filter((row) => row.reportType === 'campaign').map(relationKey));
+  const searchRecords = records.filter((row) => row.reportType === 'searchTerm');
+  const rows = filtered.filter((row) => row.reportType === 'searchTerm' && (!campaignParam || row.campaign === campaignParam) && (!productParam || row.product === productParam) && (!search || `${row.searchTerm ?? ''} ${row.searchTermTranslation ?? ''} ${row.campaign ?? ''}`.toLowerCase().includes(search.toLowerCase())));
+  const linked = rows.filter((row) => campaignKeys.has(relationKey(row))).length;
+  return <><PageTitle title="搜索词分析" subtitle="按产品、店铺和广告活动自动关联搜索词；指标使用搜索词报表自身口径" extra={<Tag color={linked === rows.length ? 'success' : 'warning'}>{linked} / {rows.length} 条已关联</Tag>} /><DataScope reportTypes={['searchTerm']} />{!searchRecords.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未导入搜索词日报" /></Card> : <><MetricCards metrics={calculateMetrics(rows)} /><Card style={{ marginTop: 16 }}><Input.Search allowClear style={{ maxWidth: 420, marginBottom: 16 }} placeholder="搜索用户搜索词、翻译或广告活动" onChange={(event) => setSearch(event.target.value)} /><Table rowKey="id" size="small" dataSource={rows} scroll={{ x: 1900 }} pagination={{ pageSize: 20, showSizeChanger: true }} columns={[
+    { title: '日期', dataIndex: 'date', fixed: 'left', width: 110 }, { title: '产品', dataIndex: 'product', width: 120 }, { title: '店铺', dataIndex: 'store', width: 85 },
+    { title: '用户搜索词', dataIndex: 'searchTerm', fixed: 'left', width: 220, ellipsis: true }, { title: '翻译', dataIndex: 'searchTermTranslation', width: 150, ellipsis: true }, { title: '投放', dataIndex: 'target', width: 190, ellipsis: true }, { title: '匹配类型', dataIndex: 'matchType', width: 100 },
+    { title: '广告组', dataIndex: 'adGroup', width: 220, ellipsis: true }, { title: '广告活动', dataIndex: 'campaign', width: 240, ellipsis: true, render: (value: string | null, row: AdsRecord) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}`}>{value}</Link> : '—' },
+    { title: '广告组合', dataIndex: 'portfolio', width: 130 }, { title: '关联', width: 90, render: (_: unknown, row: AdsRecord) => <Tag color={campaignKeys.has(relationKey(row)) ? 'success' : 'warning'}>{campaignKeys.has(relationKey(row)) ? '已关联' : '待活动报表'}</Tag> },
+    { title: '曝光', dataIndex: 'impressions', width: 90, align: 'right', render: integer }, { title: '点击', dataIndex: 'clicks', width: 80, align: 'right', render: integer }, { title: '花费', dataIndex: 'spend', width: 90, align: 'right', render: money }, { title: '订单', dataIndex: 'orders', width: 75, align: 'right', render: integer }, { title: '销售额', dataIndex: 'sales', width: 95, align: 'right', render: money }, { title: 'ACOS', width: 85, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).acos) },
+  ]} /></Card></>}</>;
+}
+
+export function PlacementPage() {
+  const { records, filtered } = useAds(); const [params] = useSearchParams();
+  const campaignParam = params.get('campaign'); const productParam = params.get('product');
+  const placementRecords = records.filter((row) => row.reportType === 'placement');
+  const rows = filtered.filter((row) => row.reportType === 'placement' && (!campaignParam || row.campaign === campaignParam) && (!productParam || row.product === productParam));
+  const chartData = groupRecords(rows, (row) => row.placement ?? '未命名广告位').sort((a, b) => b.spend - a.spend);
+  return <><PageTitle title="广告位分析" subtitle="仅使用广告位日报，按产品和活动查看首页顶部、其余位置与商品详情页表现" /><DataScope reportTypes={['placement']} />{!placementRecords.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未导入广告位日报" /></Card> : <><MetricCards metrics={calculateMetrics(rows)} /><Row gutter={[16, 16]} style={{ marginTop: 16 }}><Col xs={24} xl={10}><ChartCard title="广告位花费与销售额" height={380}><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 12, right: 18, left: 4, bottom: 38 }}><CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="name" interval={0} angle={-18} textAnchor="end" height={66} /><YAxis /><Tooltip formatter={(value) => typeof value === 'number' ? money(value) : value} /><Legend /><Bar dataKey="spend" name="广告花费" fill="#0072B2" radius={[5, 5, 0, 0]} /><Bar dataKey="sales" name="广告销售额" fill="#009E73" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></ChartCard></Col><Col xs={24} xl={14}><Card title="广告位明细" styles={{ body: { padding: 0 } }}><Table rowKey="id" size="small" dataSource={rows} scroll={{ x: 1250, y: 330 }} pagination={{ pageSize: 15 }} columns={[{ title: '日期', dataIndex: 'date', fixed: 'left', width: 105 }, { title: '产品', dataIndex: 'product', width: 120 }, { title: '广告位', dataIndex: 'placement', fixed: 'left', width: 170 }, { title: '广告活动', dataIndex: 'campaign', width: 230, ellipsis: true, render: (value: string | null, row: AdsRecord) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}`}>{value}</Link> : '—' }, { title: '广告组合', dataIndex: 'portfolio', width: 130 }, { title: '曝光', dataIndex: 'impressions', width: 85, render: integer }, { title: '点击', dataIndex: 'clicks', width: 75, render: integer }, { title: '花费', dataIndex: 'spend', width: 90, render: money }, { title: '订单', dataIndex: 'orders', width: 75, render: integer }, { title: '销售额', dataIndex: 'sales', width: 95, render: money }, { title: 'ACOS', width: 80, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).acos) }]} /></Card></Col></Row></>}</>;
+}
 
 export function ImportPage() {
   const { records, imports, preview, setPreview, commitPreview } = useAds(); const { message } = App.useApp(); const [busy, setBusy] = useState(false); const [productName, setProductName] = useState('');
@@ -233,7 +271,7 @@ export function ImportPage() {
     {preview.warnings.map((warning) => <Alert key={warning} type="warning" showIcon title={warning} />)}
     {preview.errors.length > 0 && <Alert type="error" showIcon title={`发现 ${preview.errors.length} 个校验问题`} description={preview.errors.slice(0, 6).join('；')} />}
     <Card title="导入预览" extra={<Space><Button onClick={() => setPreview(null)}>取消</Button><Button type="primary" icon={<UploadOutlined />} disabled={!preview.records.length} onClick={() => void commitPreview()}>确认导入</Button></Space>}><Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} items={[
-      { key: 'product', label: '所属产品', children: <Tag color="blue">{preview.batch.product}</Tag> }, { key: 'file', label: '文件名', children: preview.batch.fileName }, { key: 'sheet', label: '工作表', children: preview.batch.sheetName }, { key: 'count', label: '记录数', children: preview.batch.totalRows }, { key: 'type', label: '报告类型', children: preview.batch.reportType === 'campaign' ? '广告活动日报' : preview.batch.reportType === 'adGroup' ? '广告组日报' : '待确认' },
+      { key: 'product', label: '所属产品', children: <Tag color="blue">{preview.batch.product}</Tag> }, { key: 'file', label: '文件名', children: preview.batch.fileName }, { key: 'sheet', label: '工作表', children: preview.batch.sheetName }, { key: 'count', label: '记录数', children: preview.batch.totalRows }, { key: 'type', label: '报告类型', children: reportTypeLabel(preview.batch.reportType) },
       { key: 'date', label: '日期范围', children: `${preview.batch.dateMin ?? '—'} 至 ${preview.batch.dateMax ?? '—'}` }, { key: 'store', label: '表内店铺', children: preview.batch.stores.join('、') || '—' }, { key: 'success', label: '可读取记录', children: preview.records.length }, { key: 'failed', label: '校验问题', children: preview.errors.length },
     ]} /></Card>
     <Card title="字段识别" extra={<Text type="secondary">可手动纠正；同一个系统字段只能映射一次</Text>}><Table size="small" pagination={false} rowKey="source" dataSource={preview.mappings} columns={[{ title: '原始字段', dataIndex: 'source' }, { title: '系统字段', dataIndex: 'target', render: (value, row) => <Select allowClear showSearch style={{ minWidth: 160 }} placeholder="未映射" value={value ?? undefined} options={MAPPING_TARGET_OPTIONS} onChange={(target) => updateMapping(row.source, target ?? null)} /> }, { title: '状态', dataIndex: 'status', render: (v) => <Tag color={v === 'matched' ? 'success' : 'warning'}>{v === 'matched' ? '已识别' : '待确认（原样保留）'}</Tag> }]} /></Card>
@@ -245,7 +283,7 @@ export function ManagementPage() {
   const { imports, records, removeImport, exportBackup, restoreBackup } = useAds(); const { modal, message } = App.useApp();
   const handleRestore = async (file: File) => { try { await restoreBackup(file); } catch (e) { message.error(e instanceof Error ? e.message : '恢复失败'); } return false; };
   return <><PageTitle title="数据管理" subtitle="管理导入批次、原始记录、本地备份与恢复" extra={<Space><Button icon={<DownloadOutlined />} disabled={!imports.length} onClick={exportBackup}>导出 JSON 备份</Button><Upload accept=".json" showUploadList={false} beforeUpload={handleRestore}><Button icon={<UploadOutlined />}>恢复备份</Button></Upload></Space>} /><Alert style={{ marginTop: 20 }} type="info" showIcon title="数据保存在此浏览器的 IndexedDB 中" description="IndexedDB 不等同于自动写入 Windows 文件夹。请定期导出 JSON 备份并保存到您选择的位置。" /><Card style={{ marginTop: 16 }} title={`导入记录（${imports.length} 个批次，${records.length} 条明细）`}><Table rowKey="id" dataSource={[...imports].sort((a, b) => b.importedAt.localeCompare(a.importedAt))} columns={[
-    { title: '产品', dataIndex: 'product', width: 140, render: (value: string | undefined) => value ?? '未分类产品' }, { title: '文件名', dataIndex: 'fileName', ellipsis: true }, { title: '报告类型', dataIndex: 'reportType' }, { title: '导入时间', dataIndex: 'importedAt', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm:ss') }, { title: '日期范围', render: (_, r) => `${r.dateMin ?? '—'} 至 ${r.dateMax ?? '—'}` }, { title: '成功', dataIndex: 'acceptedRows' }, { title: '重复', dataIndex: 'duplicateRows' }, { title: '失败', dataIndex: 'failedRows' },
+    { title: '产品', dataIndex: 'product', width: 140, render: (value: string | undefined) => value ?? '未分类产品' }, { title: '文件名', dataIndex: 'fileName', ellipsis: true }, { title: '报告类型', dataIndex: 'reportType', render: reportTypeLabel }, { title: '导入时间', dataIndex: 'importedAt', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm:ss') }, { title: '日期范围', render: (_, r) => `${r.dateMin ?? '—'} 至 ${r.dateMax ?? '—'}` }, { title: '成功', dataIndex: 'acceptedRows' }, { title: '重复', dataIndex: 'duplicateRows' }, { title: '失败', dataIndex: 'failedRows' },
     { title: '操作', render: (_, r) => <Button danger type="text" icon={<DeleteOutlined />} onClick={() => modal.confirm({ title: '删除这个导入批次？', content: '该批次写入的广告记录也会被删除，此操作不可撤销。', okButtonProps: { danger: true }, onOk: () => removeImport(r.id) })}>删除</Button> },
   ]} pagination={{ pageSize: 10 }} /></Card></>;
 }

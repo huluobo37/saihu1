@@ -7,6 +7,10 @@ describe('Excel normalization', () => {
     expect(mapped.map((item) => item.target)).toEqual(['date', 'store', 'campaign', 'spend', null]);
     expect(mapped.at(-1)?.status).toBe('unconfirmed');
   });
+  it('maps search-term and placement relationship fields', () => {
+    const mapped = mapHeaders(['用户搜索词', '用户搜索词翻译', '所在广告组', '所在广告活动', '广告组合', '投放', '匹配类型', '广告位', '所属广告活动']);
+    expect(mapped.map((item) => item.target)).toEqual(['searchTerm', 'searchTermTranslation', 'adGroup', 'campaign', 'portfolio', 'target', 'matchType', 'placement', 'campaign']);
+  });
   it('parses amounts, percentages and empty cells', () => {
     expect(parseNumber('1,234.50')).toBe(1234.5); expect(parseNumber('29.08%')).toBe(29.08); expect(parseNumber('')).toBeNull(); expect(parseNumber(null)).toBeNull();
   });

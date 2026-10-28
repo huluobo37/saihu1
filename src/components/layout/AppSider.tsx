@@ -1,4 +1,4 @@
-import { BarChartOutlined, CloudOutlined, DashboardOutlined, DatabaseOutlined, FundProjectionScreenOutlined, LineChartOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons';
+import { BarChartOutlined, CloudOutlined, DashboardOutlined, DatabaseOutlined, FundProjectionScreenOutlined, LineChartOutlined, SearchOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons';
 import { Layout, Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import { useEffect, useMemo, type ReactNode } from 'react';
@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { NAVIGATION, activeNavKey } from '@/config/navigation';
 import { usePreferences } from '@/stores/preferences';
 const { Sider } = Layout;
-const ICONS: Record<string, ReactNode> = { dashboard: <DashboardOutlined />, chart: <BarChartOutlined />, trend: <LineChartOutlined />, placement: <FundProjectionScreenOutlined />, import: <UploadOutlined />, database: <DatabaseOutlined />, cloud: <CloudOutlined />, settings: <SettingOutlined /> };
+const ICONS: Record<string, ReactNode> = { dashboard: <DashboardOutlined />, chart: <BarChartOutlined />, search: <SearchOutlined />, trend: <LineChartOutlined />, placement: <FundProjectionScreenOutlined />, import: <UploadOutlined />, database: <DatabaseOutlined />, cloud: <CloudOutlined />, settings: <SettingOutlined /> };
 export function AppSider() {
   const navigate = useNavigate(); const location = useLocation(); const collapsed = usePreferences((s) => s.siderCollapsed); const setSiderCollapsed = usePreferences((s) => s.setSiderCollapsed);
   useEffect(() => {
