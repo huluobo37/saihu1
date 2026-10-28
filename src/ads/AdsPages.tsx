@@ -3,7 +3,7 @@ import {
   InboxOutlined, LockOutlined, MailOutlined, SafetyCertificateOutlined, SyncOutlined, UploadOutlined,
 } from '@ant-design/icons';
 import {
-  Alert, App, Button, Card, Checkbox, Col, DatePicker, Descriptions, Divider, Empty, Flex, Form, Input,
+  Alert, App, AutoComplete, Button, Card, Checkbox, Col, DatePicker, Descriptions, Divider, Empty, Flex, Form, Input,
   Modal, Result, Row, Select, Space, Statistic, Switch, Table, Tag, Typography, Upload,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -41,7 +41,7 @@ function NoData() {
 
 function DataScope() {
   const { records, filtered, filters, setFilters } = useAds();
-  const unique = (field: 'store' | 'campaign' | 'adType' | 'status') => [...new Set(records.map((r) => r[field]).filter((v): v is string => Boolean(v)))].sort();
+  const unique = (field: 'product' | 'store' | 'campaign' | 'adType' | 'status') => [...new Set(records.map((r) => field === 'product' ? (r.product ?? '未分类产品') : r[field]).filter((v): v is string => Boolean(v)))].sort();
   const dates = [...new Set(records.map((record) => record.date).filter((value): value is string => Boolean(value)))].sort();
   const maxDate = dates.length ? dayjs(dates.at(-1)) : null;
   const presets = maxDate ? [
@@ -53,7 +53,7 @@ function DataScope() {
   return <Card size="small" style={{ marginTop: 20 }}><Flex gap={10} wrap align="center">
     <Text strong>所有折线图日期范围</Text>
     <DatePicker.RangePicker presets={presets} value={filters.dateRange ? [dayjs(filters.dateRange[0]), dayjs(filters.dateRange[1])] : null} onChange={(values) => setFilters({ ...filters, dateRange: values ? [values[0]!.format('YYYY-MM-DD'), values[1]!.format('YYYY-MM-DD')] : null })} />
-    {(['store', 'campaign', 'adType', 'status'] as const).map((field) => <Select key={field} allowClear showSearch style={{ minWidth: field === 'campaign' ? 220 : 140 }} placeholder={{ store: '全部店铺', campaign: '全部广告活动', adType: '全部广告类型', status: '全部状态' }[field]} value={filters[field]} options={unique(field).map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, [field]: value ?? null })} />)}
+    {(['product', 'store', 'campaign', 'adType', 'status'] as const).map((field) => <Select key={field} allowClear showSearch style={{ minWidth: field === 'campaign' ? 220 : field === 'product' ? 180 : 140 }} placeholder={{ product: '全部产品', store: '全部店铺', campaign: '全部广告活动', adType: '全部广告类型', status: '全部状态' }[field]} value={filters[field]} options={unique(field).map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, [field]: value ?? null })} />)}
     <Tag color="blue">{filtered.length} / {records.length} 条</Tag>
   </Flex></Card>;
 }
@@ -112,6 +112,7 @@ export function OverviewPage() {
 
 const recordColumns: ColumnsType<AdsRecord> = [
   { title: '日期', dataIndex: 'date', fixed: 'left', width: 110, sorter: (a, b) => (a.date ?? '').localeCompare(b.date ?? '') },
+  { title: '产品', dataIndex: 'product', width: 130, render: (value: string | null) => value ?? '未分类产品' },
   { title: '店铺', dataIndex: 'store', width: 100 }, { title: '广告活动', dataIndex: 'campaign', fixed: 'left', width: 240, ellipsis: true, render: (value: string | null) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}`}>{value}</Link> : '—' },
   { title: '花费', dataIndex: 'spend', width: 105, align: 'right', render: money, sorter: (a, b) => (a.spend ?? -1) - (b.spend ?? -1) },
   { title: '销售额', dataIndex: 'sales', width: 105, align: 'right', render: money, sorter: (a, b) => (a.sales ?? -1) - (b.sales ?? -1) },
@@ -125,7 +126,7 @@ const recordColumns: ColumnsType<AdsRecord> = [
 export function CampaignPage() {
   const { records, filtered } = useAds(); const [search, setSearch] = useState(''); const [raw, setRaw] = useState<AdsRecord | null>(null);
   const rows = filtered.filter((r) => !search || (r.campaign ?? '').toLowerCase().includes(search.toLowerCase()));
-  const exportRows = () => { const sheet = XLSX.utils.json_to_sheet(rows.map((r) => ({ 日期: r.date, 店铺名称: r.store, 广告活动: r.campaign, 广告花费: r.spend, 广告销售额: r.sales, 广告订单量: r.orders, 广告曝光量: r.impressions, 广告点击量: r.clicks, ACOS: calculateMetrics([r]).acos, CPC: calculateMetrics([r]).cpc, CTR: calculateMetrics([r]).ctr, 转化率: calculateMetrics([r]).conversionRate, ROAS: calculateMetrics([r]).roas, 每日预算: r.dailyBudget, 广告类型: r.adType, 有效状态: r.status }))); const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, '广告活动'); XLSX.writeFile(book, '广告活动筛选结果.xlsx'); };
+  const exportRows = () => { const sheet = XLSX.utils.json_to_sheet(rows.map((r) => ({ 产品: r.product ?? '未分类产品', 日期: r.date, 店铺名称: r.store, 广告活动: r.campaign, 广告花费: r.spend, 广告销售额: r.sales, 广告订单量: r.orders, 广告曝光量: r.impressions, 广告点击量: r.clicks, ACOS: calculateMetrics([r]).acos, CPC: calculateMetrics([r]).cpc, CTR: calculateMetrics([r]).ctr, 转化率: calculateMetrics([r]).conversionRate, ROAS: calculateMetrics([r]).roas, 每日预算: r.dailyBudget, 广告类型: r.adType, 有效状态: r.status }))); const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, '广告活动'); XLSX.writeFile(book, '广告活动筛选结果.xlsx'); };
   return <><PageTitle title="广告活动分析" subtitle="广告活动日报与重新计算指标；不会把广告活动误标为广告组" extra={<Button icon={<DownloadOutlined />} disabled={!rows.length} onClick={exportRows}>导出筛选结果</Button>} /><DataScope />{!records.length ? <NoData /> : <Card style={{ marginTop: 16 }}><Input.Search allowClear style={{ maxWidth: 360, marginBottom: 16 }} placeholder="搜索广告活动名称" onSearch={setSearch} onChange={(e) => setSearch(e.target.value)} /><Table rowKey="id" size="small" columns={[...recordColumns, { title: '原始记录', fixed: 'right', width: 100, render: (_, row) => <Button type="link" onClick={() => setRaw(row)}>查看</Button> }]} dataSource={rows} scroll={{ x: 1750 }} pagination={{ pageSize: 20, showSizeChanger: true }} /><Modal width={760} open={Boolean(raw)} onCancel={() => setRaw(null)} footer={null} title="完整原始记录"><Descriptions bordered size="small" column={1} items={Object.entries(raw?.raw ?? {}).map(([label, value]) => ({ key: label, label, children: value === null ? <Text type="secondary">null</Text> : String(value) }))} /></Modal></Card>}</>;
 }
 
@@ -215,8 +216,10 @@ export function TrendsPage() {
 export function PlacementPage() { return <><PageTitle title="广告位分析" subtitle="此模块只接受真实的广告位表现报告" /><Card style={{ marginTop: 20 }}><Result icon={<DatabaseOutlined />} title="尚无广告位表现数据" subTitle="当前广告活动日报中的“搜索结果顶部（首页）广告位”等字段可能是竞价调整比例，不能未经确认当作曝光量。请导入包含广告位、曝光、点击、花费和销售额的广告位表现报告。" extra={<Tag>所需字段：日期、广告活动、广告位、曝光、点击、花费、销售额</Tag>} /></Card></> }
 
 export function ImportPage() {
-  const { preview, setPreview, commitPreview } = useAds(); const { message } = App.useApp(); const [busy, setBusy] = useState(false);
-  const beforeUpload = async (file: File) => { setBusy(true); try { if (!file.name.toLowerCase().endsWith('.xlsx')) throw new Error('仅支持 .xlsx 文件'); let parsed = await parseExcel(file); const savedMappings = await getSetting<Record<string, MappingTarget>>('mapping-rules'); if (savedMappings) { const mappings = parsed.mappings.map((mapping) => savedMappings[mapping.source] ? { ...mapping, target: savedMappings[mapping.source]!, status: 'matched' as const } : mapping); parsed = remapPreview(parsed, mappings); } setPreview(parsed); message.success('文件解析完成，请核对字段与数据后确认导入'); } catch (error) { message.error(error instanceof Error ? error.message : '解析失败'); } finally { setBusy(false); } return false; };
+  const { records, imports, preview, setPreview, commitPreview } = useAds(); const { message } = App.useApp(); const [busy, setBusy] = useState(false); const [productName, setProductName] = useState('');
+  const productOptions = [...new Set([...records.map((record) => record.product), ...imports.map((batch) => batch.product)].filter((value): value is string => Boolean(value)))].sort().map((value) => ({ value }));
+  useEffect(() => { void getSetting<string>('last-import-product').then((value) => { if (value) setProductName(value); }); }, []);
+  const beforeUpload = async (file: File) => { setBusy(true); try { if (!productName.trim()) throw new Error('请先选择或输入产品名称'); if (!file.name.toLowerCase().endsWith('.xlsx')) throw new Error('仅支持 .xlsx 文件'); let parsed = await parseExcel(file, productName); const savedMappings = await getSetting<Record<string, MappingTarget>>('mapping-rules'); if (savedMappings) { const mappings = parsed.mappings.map((mapping) => savedMappings[mapping.source] ? { ...mapping, target: savedMappings[mapping.source]!, status: 'matched' as const } : mapping); parsed = remapPreview(parsed, mappings); } await setSetting('last-import-product', productName.trim()); setPreview(parsed); message.success('文件解析完成，请核对产品、字段与数据后确认导入'); } catch (error) { message.error(error instanceof Error ? error.message : '解析失败'); } finally { setBusy(false); } return false; };
   const updateMapping = (source: string, target: MappingTarget | null) => {
     if (!preview) return;
     const mappings = preview.mappings.map((mapping) => {
@@ -226,11 +229,11 @@ export function ImportPage() {
     });
     setPreview(remapPreview(preview, mappings));
   };
-  return <><PageTitle title="数据导入" subtitle="先预览、识别和校验，再写入浏览器 IndexedDB" /><Card style={{ marginTop: 20 }}><Upload.Dragger accept=".xlsx" maxCount={1} showUploadList={false} beforeUpload={beforeUpload} disabled={busy}><p className="ant-upload-drag-icon"><InboxOutlined /></p><p className="ant-upload-text">拖拽或点击选择赛虎 ERP Excel 报表</p><p className="ant-upload-hint">支持 .xlsx；空值保留为 null，未知字段保留在原始记录中</p></Upload.Dragger></Card>{preview && <Space orientation="vertical" size={16} style={{ display: 'flex', marginTop: 16 }}>
+  return <><PageTitle title="数据导入" subtitle="先选择产品，再预览、识别和校验 Excel 数据" /><Card style={{ marginTop: 20 }}><Space orientation="vertical" size={16} style={{ display: 'flex' }}><div><Text strong>所属产品</Text><Text type="secondary" style={{ marginLeft: 8 }}>必填，可选择已有产品或直接输入新产品名称</Text><AutoComplete style={{ display: 'block', maxWidth: 420, marginTop: 8 }} value={productName} options={productOptions} onChange={setProductName} placeholder="例如：SW拔罐器" allowClear /></div><Upload.Dragger accept=".xlsx" maxCount={1} showUploadList={false} beforeUpload={beforeUpload} disabled={busy || !productName.trim()}><p className="ant-upload-drag-icon"><InboxOutlined /></p><p className="ant-upload-text">拖拽或点击选择赛虎 ERP Excel 报表</p><p className="ant-upload-hint">支持 .xlsx；本次文件中的所有记录都将归入“{productName.trim() || '待选择产品'}”</p></Upload.Dragger></Space></Card>{preview && <Space orientation="vertical" size={16} style={{ display: 'flex', marginTop: 16 }}>
     {preview.warnings.map((warning) => <Alert key={warning} type="warning" showIcon title={warning} />)}
     {preview.errors.length > 0 && <Alert type="error" showIcon title={`发现 ${preview.errors.length} 个校验问题`} description={preview.errors.slice(0, 6).join('；')} />}
     <Card title="导入预览" extra={<Space><Button onClick={() => setPreview(null)}>取消</Button><Button type="primary" icon={<UploadOutlined />} disabled={!preview.records.length} onClick={() => void commitPreview()}>确认导入</Button></Space>}><Descriptions bordered size="small" column={{ xs: 1, sm: 2, lg: 4 }} items={[
-      { key: 'file', label: '文件名', children: preview.batch.fileName }, { key: 'sheet', label: '工作表', children: preview.batch.sheetName }, { key: 'count', label: '记录数', children: preview.batch.totalRows }, { key: 'type', label: '报告类型', children: preview.batch.reportType === 'campaign' ? '广告活动日报' : preview.batch.reportType === 'adGroup' ? '广告组日报' : '待确认' },
+      { key: 'product', label: '所属产品', children: <Tag color="blue">{preview.batch.product}</Tag> }, { key: 'file', label: '文件名', children: preview.batch.fileName }, { key: 'sheet', label: '工作表', children: preview.batch.sheetName }, { key: 'count', label: '记录数', children: preview.batch.totalRows }, { key: 'type', label: '报告类型', children: preview.batch.reportType === 'campaign' ? '广告活动日报' : preview.batch.reportType === 'adGroup' ? '广告组日报' : '待确认' },
       { key: 'date', label: '日期范围', children: `${preview.batch.dateMin ?? '—'} 至 ${preview.batch.dateMax ?? '—'}` }, { key: 'store', label: '表内店铺', children: preview.batch.stores.join('、') || '—' }, { key: 'success', label: '可读取记录', children: preview.records.length }, { key: 'failed', label: '校验问题', children: preview.errors.length },
     ]} /></Card>
     <Card title="字段识别" extra={<Text type="secondary">可手动纠正；同一个系统字段只能映射一次</Text>}><Table size="small" pagination={false} rowKey="source" dataSource={preview.mappings} columns={[{ title: '原始字段', dataIndex: 'source' }, { title: '系统字段', dataIndex: 'target', render: (value, row) => <Select allowClear showSearch style={{ minWidth: 160 }} placeholder="未映射" value={value ?? undefined} options={MAPPING_TARGET_OPTIONS} onChange={(target) => updateMapping(row.source, target ?? null)} /> }, { title: '状态', dataIndex: 'status', render: (v) => <Tag color={v === 'matched' ? 'success' : 'warning'}>{v === 'matched' ? '已识别' : '待确认（原样保留）'}</Tag> }]} /></Card>
@@ -242,7 +245,7 @@ export function ManagementPage() {
   const { imports, records, removeImport, exportBackup, restoreBackup } = useAds(); const { modal, message } = App.useApp();
   const handleRestore = async (file: File) => { try { await restoreBackup(file); } catch (e) { message.error(e instanceof Error ? e.message : '恢复失败'); } return false; };
   return <><PageTitle title="数据管理" subtitle="管理导入批次、原始记录、本地备份与恢复" extra={<Space><Button icon={<DownloadOutlined />} disabled={!imports.length} onClick={exportBackup}>导出 JSON 备份</Button><Upload accept=".json" showUploadList={false} beforeUpload={handleRestore}><Button icon={<UploadOutlined />}>恢复备份</Button></Upload></Space>} /><Alert style={{ marginTop: 20 }} type="info" showIcon title="数据保存在此浏览器的 IndexedDB 中" description="IndexedDB 不等同于自动写入 Windows 文件夹。请定期导出 JSON 备份并保存到您选择的位置。" /><Card style={{ marginTop: 16 }} title={`导入记录（${imports.length} 个批次，${records.length} 条明细）`}><Table rowKey="id" dataSource={[...imports].sort((a, b) => b.importedAt.localeCompare(a.importedAt))} columns={[
-    { title: '文件名', dataIndex: 'fileName', ellipsis: true }, { title: '报告类型', dataIndex: 'reportType' }, { title: '导入时间', dataIndex: 'importedAt', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm:ss') }, { title: '日期范围', render: (_, r) => `${r.dateMin ?? '—'} 至 ${r.dateMax ?? '—'}` }, { title: '成功', dataIndex: 'acceptedRows' }, { title: '重复', dataIndex: 'duplicateRows' }, { title: '失败', dataIndex: 'failedRows' },
+    { title: '产品', dataIndex: 'product', width: 140, render: (value: string | undefined) => value ?? '未分类产品' }, { title: '文件名', dataIndex: 'fileName', ellipsis: true }, { title: '报告类型', dataIndex: 'reportType' }, { title: '导入时间', dataIndex: 'importedAt', render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm:ss') }, { title: '日期范围', render: (_, r) => `${r.dateMin ?? '—'} 至 ${r.dateMax ?? '—'}` }, { title: '成功', dataIndex: 'acceptedRows' }, { title: '重复', dataIndex: 'duplicateRows' }, { title: '失败', dataIndex: 'failedRows' },
     { title: '操作', render: (_, r) => <Button danger type="text" icon={<DeleteOutlined />} onClick={() => modal.confirm({ title: '删除这个导入批次？', content: '该批次写入的广告记录也会被删除，此操作不可撤销。', okButtonProps: { danger: true }, onOk: () => removeImport(r.id) })}>删除</Button> },
   ]} pagination={{ pageSize: 10 }} /></Card></>;
 }

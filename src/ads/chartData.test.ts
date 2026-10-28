@@ -1,7 +1,7 @@
 import { buildTrendData, strictMovingAverage } from './chartData';
 import type { AdsRecord } from './types';
 
-const row = (date: string, spend: number): AdsRecord => ({ id: date, importId: 'batch', reportType: 'campaign', date, store: 'US8', campaign: 'A', adGroup: null, adType: null, status: null, spend, sales: spend * 2, orders: 1, impressions: 100, clicks: 10, dailyBudget: null, raw: {} });
+const row = (date: string, spend: number): AdsRecord => ({ id: date, importId: 'batch', product: 'SW拔罐器', reportType: 'campaign', date, store: 'US8', campaign: 'A', adGroup: null, adType: null, status: null, spend, sales: spend * 2, orders: 1, impressions: 100, clicks: 10, dailyBudget: null, raw: {} });
 
 describe('trend chart data', () => {
   it('calculates strict trailing averages without pretending incomplete windows are complete', () => {

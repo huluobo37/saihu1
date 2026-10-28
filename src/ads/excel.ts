@@ -75,7 +75,7 @@ function valueFor(row: Record<string, unknown>, mappings: MappingResult[], targe
 }
 
 function recordsFromRows(
-  rawRows: Record<string, unknown>[], mappings: MappingResult[], fingerprint: string, importId: string,
+  rawRows: Record<string, unknown>[], mappings: MappingResult[], fingerprint: string, importId: string, product: string,
 ) {
   const reportType = inferReportType(mappings);
   const errors: string[] = [];
@@ -85,7 +85,7 @@ function recordsFromRows(
     if (!date) errors.push(`第 ${index + 2} 行缺少或无法识别日期`);
     if (reportType === 'campaign' && !campaign) errors.push(`第 ${index + 2} 行缺少广告活动名称`);
     return {
-      id: `${fingerprint}:${index + 2}`, importId, reportType, date,
+      id: `${fingerprint}:${index + 2}`, importId, product, reportType, date,
       store: String(valueFor(raw, mappings, 'store') ?? '').trim() || null,
       campaign: String(campaign ?? '').trim() || null,
       adGroup: String(valueFor(raw, mappings, 'adGroup') ?? '').trim() || null,
@@ -118,7 +118,7 @@ function previewMetadata(records: AdsRecord[], fileName: string, reportType: Rep
 export function remapPreview(preview: ImportPreview, mappings: MappingResult[]): ImportPreview {
   const normalizedMappings = mappings.map((mapping) => ({ ...mapping, status: mapping.target ? 'matched' as const : 'unconfirmed' as const }));
   const rawRows = preview.records.map((record) => record.raw);
-  const { records, reportType, errors } = recordsFromRows(rawRows, normalizedMappings, preview.batch.fingerprint, preview.batch.id);
+  const { records, reportType, errors } = recordsFromRows(rawRows, normalizedMappings, preview.batch.fingerprint, preview.batch.id, preview.batch.product);
   const { dates, stores, warnings } = previewMetadata(records, preview.batch.fileName, reportType);
   return {
     ...preview,
@@ -133,7 +133,7 @@ export function remapPreview(preview: ImportPreview, mappings: MappingResult[]):
   };
 }
 
-export async function parseExcel(file: File): Promise<ImportPreview> {
+export async function parseExcel(file: File, product: string): Promise<ImportPreview> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
   const sheetName = workbook.SheetNames[0];
@@ -145,10 +145,12 @@ export async function parseExcel(file: File): Promise<ImportPreview> {
   const mappings = mapHeaders(headers);
   const fingerprint = `${file.name}:${file.size}:${file.lastModified}`;
   const importId = crypto.randomUUID();
-  const { records, reportType, errors } = recordsFromRows(rawRows, mappings, fingerprint, importId);
+  const normalizedProduct = product.trim();
+  if (!normalizedProduct) throw new Error('请先选择或输入产品名称');
+  const { records, reportType, errors } = recordsFromRows(rawRows, mappings, fingerprint, importId, normalizedProduct);
   const { dates, stores, warnings } = previewMetadata(records, file.name, reportType);
   const batch: ImportBatch = {
-    id: importId, fingerprint, fileName: file.name, fileSize: file.size, sheetName,
+    id: importId, fingerprint, product: normalizedProduct, fileName: file.name, fileSize: file.size, sheetName,
     importedAt: new Date().toISOString(), reportType, totalRows: rawRows.length,
     acceptedRows: records.length, duplicateRows: 0, failedRows: errors.length,
     dateMin: dates[0] ?? null, dateMax: dates.at(-1) ?? null, stores, headers,

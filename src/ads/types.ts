@@ -3,6 +3,7 @@ export type ReportType = 'campaign' | 'adGroup' | 'placement' | 'unknown';
 export interface AdsRecord {
   id: string;
   importId: string;
+  product: string | null;
   reportType: ReportType;
   date: string | null;
   store: string | null;
@@ -22,6 +23,7 @@ export interface AdsRecord {
 export interface ImportBatch {
   id: string;
   fingerprint: string;
+  product: string;
   fileName: string;
   fileSize: number;
   sheetName: string;

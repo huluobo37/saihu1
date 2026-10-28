@@ -1,7 +1,7 @@
 import { calculateMetrics } from './metrics';
 import type { AdsRecord } from './types';
 
-const row = (values: Partial<AdsRecord>): AdsRecord => ({ id: crypto.randomUUID(), importId: 'test', reportType: 'campaign', date: '2026-10-26', store: 'US8', campaign: 'test', adGroup: null, adType: null, status: null, spend: null, sales: null, orders: null, impressions: null, clicks: null, dailyBudget: null, raw: {}, ...values });
+const row = (values: Partial<AdsRecord>): AdsRecord => ({ id: crypto.randomUUID(), importId: 'test', product: 'SW拔罐器', reportType: 'campaign', date: '2026-10-26', store: 'US8', campaign: 'test', adGroup: null, adType: null, status: null, spend: null, sales: null, orders: null, impressions: null, clicks: null, dailyBudget: null, raw: {}, ...values });
 
 describe('calculateMetrics', () => {
   it('uses aggregate numerators and denominators', () => {

@@ -5,7 +5,7 @@ import { deleteImport, getSetting, loadAll, replaceAll, saveImport, setSetting }
 import { parseBackup } from './backup';
 import type { AdsRecord, ImportBatch, ImportPreview } from './types';
 
-interface Filters { dateRange: [string, string] | null; store: string | null; campaign: string | null; adType: string | null; status: string | null }
+interface Filters { dateRange: [string, string] | null; product: string | null; store: string | null; campaign: string | null; adType: string | null; status: string | null }
 interface AdsState {
   records: AdsRecord[]; imports: ImportBatch[]; filtered: AdsRecord[]; loading: boolean;
   preview: ImportPreview | null; setPreview: (value: ImportPreview | null) => void;
@@ -15,7 +15,7 @@ interface AdsState {
   reloadData: () => Promise<void>;
 }
 
-const initialFilters: Filters = { dateRange: null, store: null, campaign: null, adType: null, status: null };
+const initialFilters: Filters = { dateRange: null, product: null, store: null, campaign: null, adType: null, status: null };
 const Context = createContext<AdsState | null>(null);
 
 export function AdsProvider({ children }: { children: ReactNode }) {
@@ -39,7 +39,8 @@ export function AdsProvider({ children }: { children: ReactNode }) {
 
   const filtered = useMemo(() => records.filter((row) => {
     if (filters.dateRange && (!row.date || row.date < filters.dateRange[0] || row.date > filters.dateRange[1])) return false;
-    return (!filters.store || row.store === filters.store) && (!filters.campaign || row.campaign === filters.campaign)
+    return (!filters.product || (row.product ?? '未分类产品') === filters.product)
+      && (!filters.store || row.store === filters.store) && (!filters.campaign || row.campaign === filters.campaign)
       && (!filters.adType || row.adType === filters.adType) && (!filters.status || row.status === filters.status);
   }), [records, filters]);
 

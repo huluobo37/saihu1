@@ -11,7 +11,7 @@ describe('cloud merge behavior', () => {
     ]);
   });
   it('surfaces upload failures without mutating the caller data', async () => {
-    const imports: ImportBatch[] = [{ id: 'batch', fingerprint: 'fingerprint', fileName: 'report.xlsx', fileSize: 1, sheetName: 'sheet', importedAt: '2026-10-28T00:00:00.000Z', reportType: 'campaign', totalRows: 1, acceptedRows: 1, duplicateRows: 0, failedRows: 0, dateMin: '2026-10-26', dateMax: '2026-10-26', stores: ['US8'], headers: ['日期'] }];
+    const imports: ImportBatch[] = [{ id: 'batch', fingerprint: 'fingerprint', product: 'SW拔罐器', fileName: 'report.xlsx', fileSize: 1, sheetName: 'sheet', importedAt: '2026-10-28T00:00:00.000Z', reportType: 'campaign', totalRows: 1, acceptedRows: 1, duplicateRows: 0, failedRows: 0, dateMin: '2026-10-26', dateMax: '2026-10-26', stores: ['US8'], headers: ['日期'] }];
     const client = { from: () => ({ upsert: async () => ({ error: { message: 'network unavailable' } }) }) } as unknown as SupabaseClient;
     await expect(syncWithClient(client, { id: 'user' } as User, [], imports)).rejects.toThrow('导入批次上传失败：network unavailable');
     expect(imports).toHaveLength(1);
