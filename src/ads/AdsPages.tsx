@@ -306,13 +306,98 @@ export function SearchTermsPage() {
   ]} /></Card></>}</>;
 }
 
+interface CampaignPlacementSummary extends Metrics {
+  key: string;
+  product: string;
+  campaign: string;
+  placementCount: number;
+}
+
+function CampaignPlacementSummaryTable({ rows }: { rows: AdsRecord[] }) {
+  const data = groupRecords(rows, (row) => `${row.product ?? '未分类产品'}::${row.campaign ?? '未命名活动'}`)
+    .map((group): CampaignPlacementSummary => ({
+      key: group.name,
+      product: group.records[0]?.product ?? '未分类产品',
+      campaign: group.records[0]?.campaign ?? '未命名活动',
+      placementCount: new Set(group.records.map((row) => row.placement ?? '未命名广告位')).size,
+      ...calculateMetrics(group.records),
+    }))
+    .sort((a, b) => b.spend - a.spend);
+  if (!data.length) return null;
+  return <Card style={{ marginTop: 16 }} title={<Space orientation="vertical" size={0}><Text strong style={{ fontSize: 16 }}>按广告活动汇总广告位</Text><Text type="secondary" style={{ fontSize: 12 }}>点击广告活动，按日对比该活动的不同广告位</Text></Space>} extra={<Tag color="blue">{data.length} 个活动</Tag>}>
+    <Table<CampaignPlacementSummary> rowKey="key" size="small" dataSource={data} pagination={{ pageSize: 12, showSizeChanger: true }} scroll={{ x: 1080 }} columns={[
+      { title: '产品', dataIndex: 'product', width: 130 },
+      { title: '广告活动', dataIndex: 'campaign', width: 330, ellipsis: true, render: (value, row) => <Link to={`/campaign-placement-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product)}`}>{value}　›</Link> },
+      { title: '广告位数', dataIndex: 'placementCount', width: 100, align: 'right', render: (value) => <Tag color="purple">{value} 个</Tag> },
+      { title: '花费', dataIndex: 'spend', width: 105, align: 'right', render: money },
+      { title: '销售额', dataIndex: 'sales', width: 105, align: 'right', render: money },
+      { title: '订单', dataIndex: 'orders', width: 80, align: 'right', render: integer },
+      { title: 'CTR', dataIndex: 'ctr', width: 90, align: 'right', render: percent },
+      { title: '转化率', dataIndex: 'conversionRate', width: 90, align: 'right', render: percent },
+      { title: 'ACOS', dataIndex: 'acos', width: 90, align: 'right', render: percent },
+    ]} />
+  </Card>;
+}
+
 export function PlacementPage() {
   const { records, filtered } = useAds(); const [params] = useSearchParams();
   const campaignParam = params.get('campaign'); const productParam = params.get('product');
   const placementRecords = records.filter((row) => row.reportType === 'placement');
   const rows = filtered.filter((row) => row.reportType === 'placement' && (!campaignParam || row.campaign === campaignParam) && (!productParam || row.product === productParam));
   const chartData = groupRecords(rows, (row) => row.placement ?? '未命名广告位').sort((a, b) => b.spend - a.spend);
-  return <><PageTitle title="广告位分析" subtitle="仅使用广告位日报；点击广告位名称查看每日 CTR、转化率和 ACOS 趋势" /><DataScope reportTypes={['placement']} />{!placementRecords.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未导入广告位日报" /></Card> : <><MetricCards metrics={calculateMetrics(rows)} /><Row gutter={[16, 16]} style={{ marginTop: 16 }}><Col xs={24} xl={10}><ChartCard title="广告位花费与销售额" height={380}><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 12, right: 18, left: 4, bottom: 38 }}><CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="name" interval={0} angle={-18} textAnchor="end" height={66} /><YAxis /><Tooltip formatter={(value) => typeof value === 'number' ? money(value) : value} /><Legend /><Bar dataKey="spend" name="广告花费" fill="#0072B2" radius={[5, 5, 0, 0]} /><Bar dataKey="sales" name="广告销售额" fill="#009E73" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></ChartCard></Col><Col xs={24} xl={14}><Card title="广告位明细" extra={<Text type="secondary">点击广告位查看每日趋势</Text>} styles={{ body: { padding: 0 } }}><Table rowKey="id" size="small" dataSource={rows} scroll={{ x: 1420, y: 330 }} pagination={{ pageSize: 15 }} columns={[{ title: '日期', dataIndex: 'date', fixed: 'left', width: 105 }, { title: '产品', dataIndex: 'product', width: 120 }, { title: '广告位', dataIndex: 'placement', fixed: 'left', width: 190, render: (value: string | null, row: AdsRecord) => <Link to={`/placement-detail?placement=${encodeURIComponent(value ?? '未命名广告位')}&product=${encodeURIComponent(row.product ?? '未分类产品')}&campaign=${encodeURIComponent(row.campaign ?? '')}`}>{value ?? '未命名广告位'}　›</Link> }, { title: '广告活动', dataIndex: 'campaign', width: 230, ellipsis: true, render: (value: string | null, row: AdsRecord) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}`}>{value}</Link> : '—' }, { title: '广告组合', dataIndex: 'portfolio', width: 130 }, { title: '曝光', dataIndex: 'impressions', width: 85, render: integer }, { title: '点击', dataIndex: 'clicks', width: 75, render: integer }, { title: '花费', dataIndex: 'spend', width: 90, render: money }, { title: '订单', dataIndex: 'orders', width: 75, render: integer }, { title: '销售额', dataIndex: 'sales', width: 95, render: money }, { title: 'CTR', width: 85, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).ctr) }, { title: '转化率', width: 90, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).conversionRate) }, { title: 'ACOS', width: 80, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).acos) }]} /></Card></Col></Row></>}</>;
+  return <><PageTitle title="广告位分析" subtitle="按广告活动汇总广告位；点击活动后按日对比不同广告位的 CTR、转化率和 ACOS" /><DataScope reportTypes={['placement']} />{!placementRecords.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未导入广告位日报" /></Card> : <><MetricCards metrics={calculateMetrics(rows)} /><CampaignPlacementSummaryTable rows={rows} /><Row gutter={[16, 16]} style={{ marginTop: 16 }}><Col xs={24} xl={10}><ChartCard title="广告位花费与销售额" height={380}><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData} margin={{ top: 12, right: 18, left: 4, bottom: 38 }}><CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="name" interval={0} angle={-18} textAnchor="end" height={66} /><YAxis /><Tooltip formatter={(value) => typeof value === 'number' ? money(value) : value} /><Legend /><Bar dataKey="spend" name="广告花费" fill="#0072B2" radius={[5, 5, 0, 0]} /><Bar dataKey="sales" name="广告销售额" fill="#009E73" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></ChartCard></Col><Col xs={24} xl={14}><Card title="广告位明细" extra={<Text type="secondary">点击广告位查看单独趋势</Text>} styles={{ body: { padding: 0 } }}><Table rowKey="id" size="small" dataSource={rows} scroll={{ x: 1420, y: 330 }} pagination={{ pageSize: 15 }} columns={[{ title: '日期', dataIndex: 'date', fixed: 'left', width: 105 }, { title: '产品', dataIndex: 'product', width: 120 }, { title: '广告位', dataIndex: 'placement', fixed: 'left', width: 190, render: (value: string | null, row: AdsRecord) => <Link to={`/placement-detail?placement=${encodeURIComponent(value ?? '未命名广告位')}&product=${encodeURIComponent(row.product ?? '未分类产品')}&campaign=${encodeURIComponent(row.campaign ?? '')}`}>{value ?? '未命名广告位'}　›</Link> }, { title: '广告活动', dataIndex: 'campaign', width: 230, ellipsis: true, render: (value: string | null, row: AdsRecord) => value ? <Link to={`/campaign-placement-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}`}>{value}　›</Link> : '—' }, { title: '广告组合', dataIndex: 'portfolio', width: 130 }, { title: '曝光', dataIndex: 'impressions', width: 85, render: integer }, { title: '点击', dataIndex: 'clicks', width: 75, render: integer }, { title: '花费', dataIndex: 'spend', width: 90, render: money }, { title: '订单', dataIndex: 'orders', width: 75, render: integer }, { title: '销售额', dataIndex: 'sales', width: 95, render: money }, { title: 'CTR', width: 85, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).ctr) }, { title: '转化率', width: 90, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).conversionRate) }, { title: 'ACOS', width: 80, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).acos) }]} /></Card></Col></Row></>}</>;
+}
+
+const PLACEMENT_COLORS = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#E69F00', '#56B4E9'];
+
+function CampaignPlacementTrendChart({ title, rows, metric, formatter }: { title: string; rows: AdsRecord[]; metric: 'ctr' | 'conversionRate' | 'acos'; formatter: (value: number | null) => string }) {
+  const placements = [...new Set(rows.map((row) => row.placement ?? '未命名广告位'))].sort();
+  const availableDates = [...new Set(rows.map((row) => row.date).filter((value): value is string => Boolean(value)))].sort();
+  const dates: string[] = [];
+  if (availableDates.length) {
+    let date = dayjs(availableDates[0]); const end = dayjs(availableDates.at(-1));
+    while (date.isBefore(end) || date.isSame(end, 'day')) { dates.push(date.format('YYYY-MM-DD')); date = date.add(1, 'day'); }
+  }
+  const data = dates.map((date) => Object.fromEntries([
+    ['name', date],
+    ...placements.map((placement) => [placement, calculateMetrics(rows.filter((row) => row.date === date && (row.placement ?? '未命名广告位') === placement))[metric]]),
+  ]));
+  const chartWidth = Math.max(760, dates.length * 68);
+  return <ChartCard title={title} height={430} extra={<Text type="secondary">每条线代表一个广告位</Text>}><div style={{ width: '100%', height: '100%', overflowX: 'auto', overflowY: 'hidden' }}><div style={{ width: chartWidth, height: '100%' }}><ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 16, right: 26, left: 8, bottom: 8 }}>
+    <CartesianGrid strokeDasharray="2 4" vertical={false} />
+    <XAxis dataKey="name" interval={0} angle={-45} textAnchor="end" height={76} tickMargin={10} tickFormatter={(value) => dayjs(String(value)).format('MM-DD')} />
+    <YAxis width={66} tickFormatter={(value) => formatter(Number(value))} />
+    <Tooltip labelFormatter={(label) => `日期：${String(label)}`} formatter={(value, name) => [typeof value === 'number' ? formatter(value) : '—', name]} />
+    <Legend verticalAlign="top" height={42} />
+    {placements.map((placement, index) => <Line key={placement} type="monotone" dataKey={placement} name={placement} stroke={PLACEMENT_COLORS[index % PLACEMENT_COLORS.length]} strokeWidth={2.4} dot={{ r: 2.5 }} activeDot={{ r: 5 }} connectNulls={false} />)}
+  </LineChart></ResponsiveContainer></div></div></ChartCard>;
+}
+
+export function CampaignPlacementDetailPage() {
+  const [params] = useSearchParams(); const navigate = useNavigate(); const { records } = useAds();
+  const campaignName = params.get('campaign') ?? ''; const productName = params.get('product');
+  const [dateRange, setDateRange] = useState<[string, string] | null>(null);
+  const allRows = records.filter((row) => row.reportType === 'placement' && row.campaign === campaignName && (!productName || (row.product ?? '未分类产品') === productName));
+  const allDates = [...new Set(allRows.map((row) => row.date).filter((value): value is string => Boolean(value)))].sort();
+  const rows = allRows.filter((row) => !dateRange || Boolean(row.date && row.date >= dateRange[0] && row.date <= dateRange[1]));
+  const dates = [...new Set(rows.map((row) => row.date).filter((value): value is string => Boolean(value)))].sort();
+  const placements = groupRecords(rows, (row) => row.placement ?? '未命名广告位').sort((a, b) => b.spend - a.spend);
+  const maxDate = allDates.length ? dayjs(allDates.at(-1)) : null;
+  const presets = maxDate ? [{ label: '最近 7 日', value: [maxDate.subtract(6, 'day'), maxDate] as [Dayjs, Dayjs] }, { label: '最近 10 日', value: [maxDate.subtract(9, 'day'), maxDate] as [Dayjs, Dayjs] }, { label: '最近 30 日', value: [maxDate.subtract(29, 'day'), maxDate] as [Dayjs, Dayjs] }, { label: '全部日期', value: [dayjs(allDates[0]), maxDate] as [Dayjs, Dayjs] }] : [];
+  if (!allRows.length) return <><Button icon={<ArrowLeftOutlined />} onClick={() => void navigate('/placements')}>返回广告位分析</Button><Result status="404" title="未找到该广告活动的广告位数据" subTitle={campaignName} /></>;
+  return <>
+    <Button icon={<ArrowLeftOutlined />} onClick={() => void navigate('/placements')}>返回广告位分析</Button>
+    <PageTitle title={campaignName} subtitle="按日对比该广告活动的不同广告位表现" extra={<Space wrap><Tag color="purple">{productName || allRows[0]?.product || '未分类产品'}</Tag><Tag color="blue">{placements.length} 个广告位</Tag></Space>} />
+    <Card size="small" style={{ marginTop: 20 }}><Flex gap={12} align="center" wrap><Text strong>日期范围</Text><DatePicker.RangePicker aria-label="选择广告活动广告位日期范围" presets={presets} value={dateRange ? [dayjs(dateRange[0]), dayjs(dateRange[1])] : null} onChange={(values) => setDateRange(values ? [values[0]!.format('YYYY-MM-DD'), values[1]!.format('YYYY-MM-DD')] : null)} /><Text type="secondary">{dates.length ? `${dates[0]} 至 ${dates.at(-1)}，逐日显示，共 ${dates.length} 日` : '所选日期无数据'}</Text></Flex></Card>
+    {!rows.length ? <Card style={{ marginTop: 16 }}><Empty description="所选日期范围内没有数据" /></Card> : <>
+      <MetricCards metrics={calculateMetrics(rows)} />
+      <Card style={{ marginTop: 16 }} title="广告位汇总"><Table size="small" rowKey="name" dataSource={placements} pagination={false} scroll={{ x: 980 }} columns={[
+        { title: '广告位', dataIndex: 'name', width: 230, render: (value) => <Link to={`/placement-detail?placement=${encodeURIComponent(value)}&product=${encodeURIComponent(productName || allRows[0]?.product || '未分类产品')}&campaign=${encodeURIComponent(campaignName)}`}>{value}　›</Link> },
+        { title: '花费', dataIndex: 'spend', align: 'right', render: money }, { title: '销售额', dataIndex: 'sales', align: 'right', render: money }, { title: '订单', dataIndex: 'orders', align: 'right', render: integer }, { title: 'CTR', dataIndex: 'ctr', align: 'right', render: percent }, { title: '转化率', dataIndex: 'conversionRate', align: 'right', render: percent }, { title: 'ACOS', dataIndex: 'acos', align: 'right', render: percent },
+      ]} /></Card>
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}><Col span={24}><CampaignPlacementTrendChart title="不同广告位每日 CTR" rows={rows} metric="ctr" formatter={percent} /></Col><Col span={24}><CampaignPlacementTrendChart title="不同广告位每日转化率" rows={rows} metric="conversionRate" formatter={percent} /></Col><Col span={24}><CampaignPlacementTrendChart title="不同广告位每日 ACOS" rows={rows} metric="acos" formatter={percent} /></Col></Row>
+    </>}
+  </>;
 }
 
 export function PlacementDetailPage() {
