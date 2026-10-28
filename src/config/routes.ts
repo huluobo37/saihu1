@@ -22,6 +22,7 @@ export const ROUTE_PATHS = [
   '/search-terms',
   '/trends',
   '/placements',
+  '/placement-detail',
   '/import',
   '/management',
   '/sync',
