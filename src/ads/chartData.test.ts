@@ -16,4 +16,11 @@ describe('trend chart data', () => {
     expect(data[4]?.clicksMa5).toBe(10);
     expect(data[4]?.spendMa10).toBeNull();
   });
+  it('keeps every calendar day on the x-axis when a report date is missing', () => {
+    const data = buildTrendData([row('2026-10-01', 10), row('2026-10-03', 30)]);
+    expect(data.map((point) => point.name)).toEqual(['2026-10-01', '2026-10-02', '2026-10-03']);
+    expect(data[1]?.records).toHaveLength(0);
+    expect(data[1]?.spend).toBe(0);
+    expect(data[1]?.ctr).toBeNull();
+  });
 });

@@ -1,4 +1,4 @@
-import { groupRecords } from './metrics';
+import { calculateMetrics, groupRecords } from './metrics';
 import type { AdsRecord, Metrics } from './types';
 
 export type TrendMetric = keyof Pick<Metrics, 'spend' | 'sales' | 'orders' | 'impressions' | 'clicks' | 'acos' | 'cpc' | 'ctr' | 'conversionRate' | 'roas'>;
@@ -21,8 +21,23 @@ export function strictMovingAverage(values: (number | null)[], window: MovingAve
 }
 
 export function buildTrendData(rows: AdsRecord[]): TrendPoint[] {
-  const points = groupRecords(rows, (row) => row.date ?? '未知日期')
-    .sort((a, b) => a.name.localeCompare(b.name)) as TrendPoint[];
+  const datedRows = rows.filter((row): row is AdsRecord & { date: string } => Boolean(row.date));
+  const availableDates = [...new Set(datedRows.map((row) => row.date))].sort();
+  let points: TrendPoint[];
+  if (availableDates.length) {
+    const recordsByDate = new Map<string, AdsRecord[]>();
+    for (const row of datedRows) recordsByDate.set(row.date, [...(recordsByDate.get(row.date) ?? []), row]);
+    const dates: string[] = [];
+    const current = new Date(`${availableDates[0]}T00:00:00Z`);
+    const end = new Date(`${availableDates.at(-1)}T00:00:00Z`);
+    while (current <= end) { dates.push(current.toISOString().slice(0, 10)); current.setUTCDate(current.getUTCDate() + 1); }
+    points = dates.map((name) => {
+      const records = recordsByDate.get(name) ?? [];
+      return { name, records, ...calculateMetrics(records) } as TrendPoint;
+    });
+  } else {
+    points = groupRecords(rows, () => '未知日期') as TrendPoint[];
+  }
   const metrics: TrendMetric[] = ['spend', 'sales', 'orders', 'impressions', 'clicks', 'acos', 'cpc', 'ctr', 'conversionRate', 'roas'];
   const windows: MovingAverageWindow[] = [5, 10, 30];
   for (const metric of metrics) {
