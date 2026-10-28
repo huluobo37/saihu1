@@ -46,7 +46,7 @@ describe('route shells', () => {
   });
 
   it('every shell references the built bundle, not a dev entry', () => {
-    const shell = readFileSync(dist('table.html'), 'utf8');
+    const shell = readFileSync(dist('overview.html'), 'utf8');
     expect(shell).toMatch(/assets\/[\w-]+\.js/);
     expect(shell).not.toContain('/src/main.tsx');
   });

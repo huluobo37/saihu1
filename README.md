@@ -1,141 +1,65 @@
-<div align="center">
+# Amazon Ads Analytics V1.0
 
-# Colony · 蚁群
+面向赛虎 ERP 亚马逊广告日报的本地优先分析系统。项目基于 [ColorlibHQ/colony](https://github.com/ColorlibHQ/colony)（MIT）开发，保留其 Ant Design 6、主题、深色模式和响应式布局能力。
 
-**A free React admin dashboard built on Ant Design v6 — without the meta-framework.**
+## 已实现
 
-<p align="center">
-  <a href="https://colony.colorlib.com"><strong>Documentation</strong></a> ·
-  <a href="https://colony-demo.colorlib.com"><strong>Live demo</strong></a> ·
-  <a href="./README.zh-CN.md">简体中文</a>
-</p>
+- `.xlsx` 拖拽/选择导入，第一个工作表自动读取
+- 导入前预览、可编辑字段映射、映射规则记忆、未知字段待确认、日期/数值/空值处理
+- 原始列名和整行原始数据保留，店铺名不因文件名而修改
+- 按报告粒度、店铺、日期、广告活动/广告组去重
+- IndexedDB 本地持久化、批次删除、带结构校验的 JSON 备份与恢复
+- 日期、店铺、广告活动、广告类型和状态筛选条件自动保存在 IndexedDB
+- 总览、广告活动表格、筛选、排序、分页、原始记录、Excel 导出
+- 广告活动花费、销售额、ACOS、CPC、CTR、转化率对比图
+- 多日期 ACOS、CPC、CTR、转化率、花费/销售额和订单量趋势；只有一个日期时明确禁止趋势判断
+- ACOS、CPC、CTR、转化率、ROAS、每单成本使用汇总分子/分母计算
+- 广告位真实数据空状态；不把竞价调整字段当作广告位曝光
+- Supabase 邮箱注册/登录、RLS 隔离、默认关闭的双向同步与失败重试
 
-</div>
+## 本地运行
 
----
-
-> **Status: beta.** Phases 1 and 2 are complete — all 24 Ant Design Pro routes,
-> plus Theme Studio, a command palette, visual RBAC and eight pages Pro has no
-> equivalent for. Next: bilingual docs site. See [the roadmap](#roadmap).
-
-## Screenshots
-
-<p align="center">
-  <img src="docs/public/screenshots/dashboard-light.webp" alt="Analysis dashboard in light mode" width="880">
-</p>
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/public/screenshots/dashboard-dark.webp" alt="Analysis dashboard in dark mode"><br><em>Dark mode — three states, not two: explicit light, explicit dark, and the system default that stamps nothing.</em></td>
-    <td width="50%"><img src="docs/public/screenshots/theme-studio.webp" alt="Theme Studio"><br><em>Theme Studio — edit antd tokens live, with the WCAG contrast ratio beside the picker.</em></td>
-  </tr>
-  <tr>
-    <td><img src="docs/public/screenshots/data-table.webp" alt="Data table"><br><em>DataTable — server-side paging, sorting and faceted filters, with a hardened CSV export.</em></td>
-    <td><img src="docs/public/screenshots/access-control.webp" alt="Access control matrix"><br><em>Visual access control — flip a checkbox and the sidebar, palette and route guards all follow.</em></td>
-  </tr>
-  <tr>
-    <td><img src="docs/public/screenshots/command-palette.webp" alt="Command palette"><br><em>⌘K command palette — subsequence matching over every route and setting.</em></td>
-    <td><img src="docs/public/screenshots/kanban.webp" alt="Kanban board"><br><em>Kanban — drag with a pointer or the keyboard.</em></td>
-  </tr>
-  <tr>
-    <td><img src="docs/public/screenshots/dashboard-zh.webp" alt="Dashboard in Chinese"><br><em>Chinese is not a translation layer — Han glyphs get their own type scale.</em></td>
-    <td><img src="docs/public/screenshots/components-zh.webp" alt="Component gallery in Chinese, dark mode"><br><em>Every screen is reviewed in four states: light/dark × EN/ZH.</em></td>
-  </tr>
-</table>
-
-## Why this exists
-
-Ant Design Pro is the official admin template, and it's good. But using it means adopting
-[`@umijs/max`](https://umijs.org) — its build scripts are literally `max dev` and `max build`.
-If your team already knows Vite, that's a whole meta-framework to learn to get a dashboard.
-
-There's a second problem. ProComponents — `ProTable`, `ProForm`, `ProLayout` — is what makes
-Pro *Pro*, and its npm state today is:
-
-| dist-tag | version | published | declared antd support |
-|---|---|---|---|
-| `latest` | 2.8.10 | 2025-07-17 | antd 4 / 5 only |
-| `beta` | 3.1.14-6 | 2026-07-29 | antd ^6.0.0 |
-
-`npm i @ant-design/pro-components` installs a package that does not declare antd v6 support and
-has had no stable release in 13 months. Ant Design Pro works around this by pinning a prerelease.
-
-**Colony takes no dependency on ProComponents.** No prereleases in the tree.
-
-## Stack
-
-| | |
-|---|---|
-| Build | Vite 8 (Rolldown) |
-| UI | Ant Design 6 |
-| Language | TypeScript 6, `strict` |
-| Router | React Router 8 |
-| Server state | TanStack Query 5 |
-| Tables | antd Table + a toolbar layer |
-| Forms | React Hook Form + Zod 4 |
-| Client state | Zustand 5 |
-| Charts | Recharts 3 |
-| Mocking | MSW 2 |
-| i18n | i18next — `en-US` and `zh-CN`, both first-class |
-| Tests | Vitest 4 (59) · Playwright (123) |
-
-## Quick start
+需要 Node.js 20.19+ 或 22.12+，以及 pnpm 10。
 
 ```bash
-pnpm create colony-admin my-app
-cd my-app && pnpm install && pnpm dev
-```
-
-Or clone the repository directly:
-
-```bash
-git clone https://github.com/ColorlibHQ/colony.git
-cd colony
 pnpm install
-pnpm dev          # http://localhost:5273
+pnpm dev
 ```
 
-Full documentation, in English and Chinese: **[colony.colorlib.com](https://colony.colorlib.com)**
+浏览器打开终端显示的地址（默认 `http://localhost:5273`）。生产构建与测试：
 
 ```bash
-pnpm build        # typecheck + production build
-pnpm test         # unit tests
-pnpm lint         # eslint
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
-## Weight
+## 导入 Excel
 
-Measured as gzip transferred on first paint, in a headless Chromium against each
-project's own public demo:
+进入“数据导入”，选择赛虎 ERP 导出的 `.xlsx`。系统会显示文件名、工作表、记录数、日期范围、表内店铺、字段映射和前 10 条原始数据。核对后点击“确认导入”。若文件名店铺与表内店铺不同，系统只提示核对，不会修改源数据。
 
-| | JS on first paint |
-|---|---|
-| **Colony** — heaviest route (`/dashboard/analysis`) | **509 kB** |
-| Colony — `/auth/login` | 330 kB |
-| Ant Design Pro | 1,178 kB |
-| design-sparx (the 273-star alternative) | 763 kB |
-| soybean-admin (Vue + Naive UI) | 603 kB |
-| vue-vben-admin (Vue) | 312 kB |
+已使用 `US3等店铺_广告活动_每日_20261026_20261026-20261028091654425.xlsx` 完成真实上传验收。文件本身不复制进代码仓库，仓库也不包含任何模拟广告数据。
 
-CI enforces a gzip budget (`pnpm size`) and fails the build if it is exceeded.
-MSW is excluded from `pnpm build` — use `pnpm build:demo` for a build with the
-mock API, which is what the hosted demo runs.
+真实文件验收结果：14 条记录，日期 2026-10-26，表内店铺 US8；广告花费 190.40、广告销售额 654.85、订单 15、点击 59、曝光 7,480；重新计算的 ACOS 29.08%、CPC 3.23、CTR 0.79%、转化率 25.42%、ROAS 3.44。文件名的 US3 与表内 US8 不一致时，导入页会显示归属核对警告。重复导入同一数据时，14 条记录全部跳过，不会重复累计。
 
-## Bilingual by construction
+另使用 2026-10-01 至 2026-10-25 的真实广告活动日报完成多日期验收：407 条记录、42 列、25 个日期，表内店铺为 US8 和 US14-US，关键统计字段无空值。与 10 月 26 日数据合并后，本地系统共 421 条记录、26 个日期；广告花费 3,997.63、广告销售额 11,272.42、订单 215、点击 1,154、曝光 107,810，汇总 ACOS 35.46%、CPC 3.46、CTR 1.07%、转化率 18.63%、ROAS 2.82。趋势页已启用全部按日图表。
 
-`zh-CN` is authored, not machine-translated, and CI fails if an English key lands without its
-Chinese pair. Typography carries two parallel metric scales — Han glyphs need more leading and
-less tracking than Latin, so `tokens.css` swaps line-height, letter-spacing and the font stack
-off `:root:lang(zh)`. Every screen is reviewed in four states: light/dark × EN/ZH.
+## 数据与备份
 
-## Roadmap
+业务数据存储在浏览器 IndexedDB `amazon-ads-analytics` 中。它不会自动写入指定 Windows 文件夹。请在“数据管理”导出 JSON 备份并保存到安全位置；恢复会替换当前浏览器中的本地广告数据。
 
-- [x] **Phase 0** — foundation: tokens, theming, i18n, shell, CI
-- [x] **Phase 1** — parity with all 24 Ant Design Pro routes
-- [x] **Phase 2** — Theme Studio · command palette · visual RBAC · 8 pages Pro lacks
-- [x] **Phase 3** — bilingual docs site, scaffold CLI *(Gitee mirror pending)*
-- [ ] **Phase 4** — 1.0
+## 云端配置
 
-## License
+复制 `.env.example` 为 `.env.local`，填写 Supabase URL 与公开 publishable key。不要把 secret 或 `service_role` 密钥放进前端。先在 Supabase SQL Editor 执行 `supabase/schema.sql`，然后进入“本地与云端同步”完成邮箱注册或登录。若 Supabase 开启了邮箱确认，请先点击确认邮件中的链接。
 
-MIT © [Colorlib](https://colorlib.com)
+登录后，同步开关仍保持关闭。只有用户主动打开开关并点击“立即双向同步”时，系统才会上传本地批次和广告记录，同时拉取该用户已有的云端数据并按文件指纹/记录 ID 合并。本地数据不会因网络失败被删除；退出登录会自动关闭同步。
+
+## 当前限制
+
+- 广告位分析需要真实广告位表现报表。
+- 云端同步需要可用的 Supabase Auth 邮箱认证，且必须由用户明确启用。
+- 首版自动映射常见中文字段；未识别字段会原样保留并显示“待确认”。
+
+## 许可
+
+本项目保留根目录 `LICENSE` 中的 Colony / Colorlib MIT 版权与许可声明。

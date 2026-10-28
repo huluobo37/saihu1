@@ -5,7 +5,7 @@ import { initReactI18next } from 'react-i18next';
 export const SUPPORTED_LOCALES = ['en-US', 'zh-CN'] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
-export const DEFAULT_LOCALE: Locale = 'en-US';
+export const DEFAULT_LOCALE: Locale = 'zh-CN';
 export const STORAGE_KEY = 'colony.locale';
 
 /** Locales whose typography needs the CJK metric set (see tokens.css). */

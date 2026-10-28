@@ -140,3 +140,33 @@ th {
     display: inline;
   }
 }
+
+/* On phone-sized screens the desktop sider would leave too little room for
+   forms and cards. Navigation remains available on larger layouts while the
+   business pages stay readable without horizontal page scrolling on mobile. */
+@media (max-width: 640px) {
+  .app-sider {
+    position: fixed !important;
+    z-index: 30;
+    width: var(--layout-sider-w) !important;
+    min-width: var(--layout-sider-w) !important;
+    max-width: var(--layout-sider-w) !important;
+    box-shadow: var(--ant-box-shadow-secondary);
+    transform: translateX(0);
+    transition: transform 0.2s ease;
+  }
+
+  .app-sider.ant-layout-sider-collapsed {
+    transform: translateX(-100%);
+  }
+
+  .app-main-layout {
+    min-width: 0;
+  }
+
+  .app-main-content {
+    min-width: 0;
+    padding: var(--space-3) !important;
+  }
+
+}

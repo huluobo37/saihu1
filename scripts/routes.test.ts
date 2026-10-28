@@ -39,7 +39,7 @@ describe('ROUTE_PATHS', () => {
   const fromRouter = routerPaths();
 
   it('finds routes in the router at all (guards the parser itself)', () => {
-    expect(fromRouter.length).toBeGreaterThan(20);
+    expect(fromRouter.length).toBeGreaterThanOrEqual(9);
   });
 
   it('lists every route the router defines', () => {

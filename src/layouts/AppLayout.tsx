@@ -43,9 +43,10 @@ export function AppLayout() {
 
       <AppSider />
 
-      <Layout>
+      <Layout className="app-main-layout">
         <AppHeader onOpenPalette={() => setPaletteOpen(true)} />
         <Content
+          className="app-main-content"
           id="main"
           tabIndex={-1}
           style={{

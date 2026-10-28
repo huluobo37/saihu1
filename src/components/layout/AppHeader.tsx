@@ -120,6 +120,7 @@ export function AppHeader({ onOpenPalette }: { onOpenPalette: () => void }) {
     >
       <Tooltip title={t('a11y.toggleSidebar')} placement="bottomLeft">
         <Button
+          className="mobile-sider-toggle"
           type="text"
           aria-label={t('a11y.toggleSidebar')}
           aria-expanded={!siderCollapsed}

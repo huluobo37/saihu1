@@ -9,7 +9,7 @@ import react from '@vitejs/plugin-react';
 // UserConfig type, so the `test` block only type-checks via this entry.
 import { defineConfig } from 'vitest/config';
 
-import { ROUTE_PATHS } from './src/config/routes';
+import { ROUTE_PATHS } from './src/config/routes.ts';
 
 /**
  * Emits a real index.html for every route.
