@@ -1,5 +1,5 @@
 import {
-  ArrowLeftOutlined, CloudOutlined, DatabaseOutlined, DeleteOutlined, DownloadOutlined,
+  ArrowLeftOutlined, CloudOutlined, DeleteOutlined, DownloadOutlined,
   InboxOutlined, LockOutlined, MailOutlined, SafetyCertificateOutlined, SyncOutlined, UploadOutlined,
 } from '@ant-design/icons';
 import {
@@ -296,6 +296,10 @@ export function TrendsPage() {
 }
 
 const relationKey = (row: AdsRecord) => [row.product ?? '未分类产品', row.store ?? '', row.campaign ?? ''].join('|');
+const compareText = (left: string | null | undefined, right: string | null | undefined) =>
+  (left ?? '').localeCompare(right ?? '', 'zh-CN', { numeric: true, sensitivity: 'base' });
+const compareNumber = (left: number | null | undefined, right: number | null | undefined) =>
+  (left ?? -1) - (right ?? -1);
 
 export function SearchTermsPage() {
   const { records, filtered } = useAds(); const [params] = useSearchParams(); const [search, setSearch] = useState('');
@@ -305,11 +309,23 @@ export function SearchTermsPage() {
   const rows = filtered.filter((row) => row.reportType === 'searchTerm' && (!campaignParam || row.campaign === campaignParam) && (!productParam || row.product === productParam) && (!search || `${row.searchTerm ?? ''} ${row.searchTermTranslation ?? ''} ${row.campaign ?? ''}`.toLowerCase().includes(search.toLowerCase())));
   const linked = rows.filter((row) => campaignKeys.has(relationKey(row))).length;
   return <><PageTitle title="搜索词分析" subtitle="按产品、店铺和广告活动自动关联搜索词；指标使用搜索词报表自身口径" extra={<Tag color={linked === rows.length ? 'success' : 'warning'}>{linked} / {rows.length} 条已关联</Tag>} /><DataScope reportTypes={['searchTerm']} />{!searchRecords.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未导入搜索词日报" /></Card> : <><MetricCards metrics={calculateMetrics(rows)} /><Card style={{ marginTop: 16 }}><Input.Search allowClear style={{ maxWidth: 420, marginBottom: 16 }} placeholder="搜索用户搜索词、翻译或广告活动" onChange={(event) => setSearch(event.target.value)} /><Table rowKey="id" size="small" dataSource={rows} scroll={{ x: 1900 }} pagination={tablePagination(20)} columns={[
-    { title: '日期', dataIndex: 'date', fixed: 'left', width: 110 }, { title: '产品', dataIndex: 'product', width: 120 }, { title: '店铺', dataIndex: 'store', width: 85 },
-    { title: '用户搜索词', dataIndex: 'searchTerm', fixed: 'left', width: 220, ellipsis: true }, { title: '翻译', dataIndex: 'searchTermTranslation', width: 150, ellipsis: true }, { title: '投放', dataIndex: 'target', width: 190, ellipsis: true }, { title: '匹配类型', dataIndex: 'matchType', width: 100 },
-    { title: '广告组', dataIndex: 'adGroup', width: 220, ellipsis: true }, { title: '广告活动', dataIndex: 'campaign', width: 240, ellipsis: true, render: (value: string | null, row: AdsRecord) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}`}>{value}</Link> : '—' },
-    { title: '广告组合', dataIndex: 'portfolio', width: 130 }, { title: '关联', width: 90, render: (_: unknown, row: AdsRecord) => <Tag color={campaignKeys.has(relationKey(row)) ? 'success' : 'warning'}>{campaignKeys.has(relationKey(row)) ? '已关联' : '待活动报表'}</Tag> },
-    { title: '曝光', dataIndex: 'impressions', width: 90, align: 'right', render: integer }, { title: '点击', dataIndex: 'clicks', width: 80, align: 'right', render: integer }, { title: '花费', dataIndex: 'spend', width: 90, align: 'right', render: money }, { title: '订单', dataIndex: 'orders', width: 75, align: 'right', render: integer }, { title: '销售额', dataIndex: 'sales', width: 95, align: 'right', render: money }, { title: 'ACOS', width: 85, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).acos) },
+    { title: '日期', dataIndex: 'date', fixed: 'left', width: 110, sorter: (a, b) => compareText(a.date, b.date) },
+    { title: '产品', dataIndex: 'product', width: 120, sorter: (a, b) => compareText(a.product, b.product) },
+    { title: '店铺', dataIndex: 'store', width: 85, sorter: (a, b) => compareText(a.store, b.store) },
+    { title: '用户搜索词', dataIndex: 'searchTerm', fixed: 'left', width: 220, ellipsis: true, sorter: (a, b) => compareText(a.searchTerm, b.searchTerm) },
+    { title: '翻译', dataIndex: 'searchTermTranslation', width: 150, ellipsis: true, sorter: (a, b) => compareText(a.searchTermTranslation, b.searchTermTranslation) },
+    { title: '投放', dataIndex: 'target', width: 190, ellipsis: true, sorter: (a, b) => compareText(a.target, b.target) },
+    { title: '匹配类型', dataIndex: 'matchType', width: 100, sorter: (a, b) => compareText(a.matchType, b.matchType) },
+    { title: '广告组', dataIndex: 'adGroup', width: 220, ellipsis: true, sorter: (a, b) => compareText(a.adGroup, b.adGroup) },
+    { title: '广告活动', dataIndex: 'campaign', width: 240, ellipsis: true, sorter: (a, b) => compareText(a.campaign, b.campaign), render: (value: string | null, row: AdsRecord) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}`}>{value}</Link> : '—' },
+    { title: '广告组合', dataIndex: 'portfolio', width: 130, sorter: (a, b) => compareText(a.portfolio, b.portfolio) },
+    { title: '关联', width: 90, sorter: (a, b) => Number(campaignKeys.has(relationKey(a))) - Number(campaignKeys.has(relationKey(b))), render: (_: unknown, row: AdsRecord) => <Tag color={campaignKeys.has(relationKey(row)) ? 'success' : 'warning'}>{campaignKeys.has(relationKey(row)) ? '已关联' : '待活动报表'}</Tag> },
+    { title: '曝光', dataIndex: 'impressions', width: 90, align: 'right', render: integer, sorter: (a, b) => compareNumber(a.impressions, b.impressions) },
+    { title: '点击', dataIndex: 'clicks', width: 80, align: 'right', render: integer, sorter: (a, b) => compareNumber(a.clicks, b.clicks) },
+    { title: '花费', dataIndex: 'spend', width: 90, align: 'right', render: money, sorter: (a, b) => compareNumber(a.spend, b.spend) },
+    { title: '订单', dataIndex: 'orders', width: 75, align: 'right', render: integer, sorter: (a, b) => compareNumber(a.orders, b.orders) },
+    { title: '销售额', dataIndex: 'sales', width: 95, align: 'right', render: money, sorter: (a, b) => compareNumber(a.sales, b.sales) },
+    { title: 'ACOS', width: 85, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).acos), sorter: (a, b) => compareNumber(calculateMetrics([a]).acos, calculateMetrics([b]).acos) },
   ]} /></Card></>}</>;
 }
 
