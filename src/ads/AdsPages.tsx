@@ -277,7 +277,7 @@ export function CampaignDetailPage() {
       {dates.length < 30 && windows.includes(30) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前只有 ${dates.length} 个有效日期，30 日移动平均将在第 30 个有效日期后开始显示。`} />}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{metricCharts.map((chart) => <Col xs={24} xl={12} key={chart.metric}><TrendMetricChart title={chart.title} data={data} metric={chart.metric} formatter={chart.formatter} tickFormatter={chart.tickFormatter} windows={windows} rawColor={chart.color} /></Col>)}</Row>
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} xl={12}><Card title={`关联搜索词（${relatedSearchTerms.length} 条）`} extra={<Link to={`/search-terms?campaign=${encodeURIComponent(campaignName)}&product=${encodeURIComponent(productName || campaignRows[0]?.product || '')}`}>查看全部</Link>}><Table size="small" rowKey="id" dataSource={relatedSearchTerms.slice(0, 8)} pagination={false} columns={[{ title: '日期', dataIndex: 'date', width: 105 }, { title: '搜索词', dataIndex: 'searchTerm', ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', ellipsis: true }, { title: '花费', dataIndex: 'spend', width: 80, render: money }, { title: '订单', dataIndex: 'orders', width: 65, render: integer }]} locale={{ emptyText: '尚未导入该活动的搜索词报表' }} /></Card></Col>
+        <Col xs={24} xl={12}><Card title={`关联搜索词（${relatedSearchTerms.length} 条）`} extra={<Link to={`/search-terms?campaign=${encodeURIComponent(campaignName)}&product=${encodeURIComponent(productName || campaignRows[0]?.product || '')}`}>查看全部</Link>}><Table size="small" rowKey="id" dataSource={relatedSearchTerms.slice(0, 8)} pagination={false} columns={[{ title: '日期', dataIndex: 'date', width: 105 }, { title: '搜索词', dataIndex: 'searchTerm', ellipsis: true, render: (value: string | null, row: AdsRecord) => value ? <Link to={`/search-term-detail?searchTerm=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}&campaign=${encodeURIComponent(row.campaign ?? '')}`}>{value}</Link> : '—' }, { title: '广告组', dataIndex: 'adGroup', ellipsis: true }, { title: '花费', dataIndex: 'spend', width: 80, render: money }, { title: '订单', dataIndex: 'orders', width: 65, render: integer }]} locale={{ emptyText: '尚未导入该活动的搜索词报表' }} /></Card></Col>
         <Col xs={24} xl={12}><Card title={`关联广告位（${relatedPlacements.length} 条）`} extra={<Link to={`/placements?campaign=${encodeURIComponent(campaignName)}&product=${encodeURIComponent(productName || campaignRows[0]?.product || '')}`}>查看全部</Link>}><Table size="small" rowKey="id" dataSource={relatedPlacements.slice(0, 8)} pagination={false} columns={[{ title: '日期', dataIndex: 'date', width: 105 }, { title: '广告位', dataIndex: 'placement', ellipsis: true }, { title: '花费', dataIndex: 'spend', width: 80, render: money }, { title: '销售额', dataIndex: 'sales', width: 90, render: money }, { title: '订单', dataIndex: 'orders', width: 65, render: integer }]} locale={{ emptyText: '尚未导入该活动的广告位报表' }} /></Card></Col>
       </Row>
     </>}
@@ -312,7 +312,7 @@ export function SearchTermsPage() {
     { title: '日期', dataIndex: 'date', fixed: 'left', width: 110, sorter: (a, b) => compareText(a.date, b.date) },
     { title: '产品', dataIndex: 'product', width: 120, sorter: (a, b) => compareText(a.product, b.product) },
     { title: '店铺', dataIndex: 'store', width: 85, sorter: (a, b) => compareText(a.store, b.store) },
-    { title: '用户搜索词', dataIndex: 'searchTerm', fixed: 'left', width: 220, ellipsis: true, sorter: (a, b) => compareText(a.searchTerm, b.searchTerm) },
+    { title: '用户搜索词', dataIndex: 'searchTerm', fixed: 'left', width: 220, ellipsis: true, sorter: (a, b) => compareText(a.searchTerm, b.searchTerm), render: (value: string | null, row: AdsRecord) => value ? <Link to={`/search-term-detail?searchTerm=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}&campaign=${encodeURIComponent(row.campaign ?? '')}`}>{value}　›</Link> : '—' },
     { title: '翻译', dataIndex: 'searchTermTranslation', width: 150, ellipsis: true, sorter: (a, b) => compareText(a.searchTermTranslation, b.searchTermTranslation) },
     { title: '投放', dataIndex: 'target', width: 190, ellipsis: true, sorter: (a, b) => compareText(a.target, b.target) },
     { title: '匹配类型', dataIndex: 'matchType', width: 100, sorter: (a, b) => compareText(a.matchType, b.matchType) },
@@ -327,6 +327,65 @@ export function SearchTermsPage() {
     { title: '销售额', dataIndex: 'sales', width: 95, align: 'right', render: money, sorter: (a, b) => compareNumber(a.sales, b.sales) },
     { title: 'ACOS', width: 85, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).acos), sorter: (a, b) => compareNumber(calculateMetrics([a]).acos, calculateMetrics([b]).acos) },
   ]} /></Card></>}</>;
+}
+
+export function SearchTermDetailPage() {
+  const [searchParams] = useSearchParams();
+  const searchTerm = searchParams.get('searchTerm') ?? '';
+  const productName = searchParams.get('product');
+  const campaignName = searchParams.get('campaign');
+  const navigate = useNavigate();
+  const { records } = useAds();
+  const [dateRange, setDateRange] = useState<[string, string] | null>(null);
+  const [windows, setWindows] = useState<MovingAverageWindow[]>([5, 10, 30]);
+  useEffect(() => setDateRange(null), [searchTerm, productName, campaignName]);
+
+  const termRows = records.filter((record) => record.reportType === 'searchTerm'
+    && record.searchTerm === searchTerm
+    && (!productName || (record.product ?? '未分类产品') === productName)
+    && (!campaignName || record.campaign === campaignName));
+  const availableDates = [...new Set(termRows.map((record) => record.date).filter((value): value is string => Boolean(value)))].sort();
+  const rows = termRows.filter((record) => !dateRange || Boolean(record.date && record.date >= dateRange[0] && record.date <= dateRange[1]));
+  const data = buildTrendData(rows);
+  const maxDate = availableDates.length ? dayjs(availableDates.at(-1)) : null;
+  const presets = maxDate ? [
+    { label: '最近 7 日', value: [maxDate.subtract(6, 'day'), maxDate] as [Dayjs, Dayjs] },
+    { label: '最近 10 日', value: [maxDate.subtract(9, 'day'), maxDate] as [Dayjs, Dayjs] },
+    { label: '最近 30 日', value: [maxDate.subtract(29, 'day'), maxDate] as [Dayjs, Dayjs] },
+    { label: '全部日期', value: [dayjs(availableDates[0]), maxDate] as [Dayjs, Dayjs] },
+  ] : [];
+
+  if (!termRows.length) return <><Button icon={<ArrowLeftOutlined />} onClick={() => void navigate('/search-terms')}>返回搜索词分析</Button><Result status="404" title="未找到该搜索词" subTitle={searchTerm} /></>;
+
+  const translations = [...new Set(termRows.map((record) => record.searchTermTranslation).filter((value): value is string => Boolean(value)))];
+  const stores = [...new Set(termRows.map((record) => record.store).filter((value): value is string => Boolean(value)))];
+  const campaigns = [...new Set(termRows.map((record) => record.campaign).filter((value): value is string => Boolean(value)))];
+  const dateDescription = data.length ? `${data[0]!.name} 至 ${data.at(-1)!.name}，连续显示 ${data.length} 日` : '所选日期无数据';
+
+  return <>
+    <Button icon={<ArrowLeftOutlined />} onClick={() => void navigate('/search-terms')}>返回搜索词分析</Button>
+    <PageTitle title={searchTerm || '未命名搜索词'} subtitle={translations.length ? translations.join('、') : '该搜索词的每日表现与移动平均趋势'} extra={<Space wrap><Tag color="purple">{productName || termRows[0]?.product || '未分类产品'}</Tag><Tag>{stores.join('、') || '未知店铺'}</Tag><Tag color="blue">{campaigns.length} 个广告活动</Tag></Space>} />
+    <Card size="small" style={{ marginTop: 20 }}><Flex gap={12} align="center" wrap><Text strong>所有折线图日期范围</Text><DatePicker.RangePicker aria-label="选择搜索词日期范围" presets={presets} value={dateRange ? [dayjs(dateRange[0]), dayjs(dateRange[1])] : null} onChange={(values) => setDateRange(values ? [values[0]!.format('YYYY-MM-DD'), values[1]!.format('YYYY-MM-DD')] : null)} /><Text type="secondary">{dateDescription}；无记录日期自动补齐</Text></Flex></Card>
+    {!rows.length ? <Card style={{ marginTop: 16 }}><Empty description="所选日期范围内没有数据" /></Card> : <>
+      <MetricCards metrics={calculateMetrics(rows)} />
+      <div style={{ marginTop: 16 }}><MovingAverageControls windows={windows} setWindows={setWindows} /></div>
+      {data.length < 30 && windows.includes(30) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前连续日期范围为 ${data.length} 日，30 日移动平均将在第 30 日后开始显示。`} />}
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{metricCharts.map((chart) => <Col xs={24} xl={12} key={chart.metric}><TrendMetricChart title={chart.title} data={data} metric={chart.metric} formatter={chart.formatter} tickFormatter={chart.tickFormatter} windows={windows} rawColor={chart.color} /></Col>)}</Row>
+      <Card style={{ marginTop: 16 }} title="每日原始明细" styles={{ body: { padding: 0 } }}><Table rowKey="id" size="small" dataSource={[...rows].sort((a, b) => compareText(a.date, b.date))} pagination={tablePagination(20)} scroll={{ x: 1300 }} columns={[
+        { title: '日期', dataIndex: 'date', fixed: 'left', width: 110, sorter: (a, b) => compareText(a.date, b.date) },
+        { title: '广告活动', dataIndex: 'campaign', width: 260, ellipsis: true, sorter: (a, b) => compareText(a.campaign, b.campaign), render: (value: string | null, row: AdsRecord) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}`}>{value}</Link> : '—' },
+        { title: '广告组', dataIndex: 'adGroup', width: 220, ellipsis: true, sorter: (a, b) => compareText(a.adGroup, b.adGroup) },
+        { title: '投放', dataIndex: 'target', width: 200, ellipsis: true, sorter: (a, b) => compareText(a.target, b.target) },
+        { title: '匹配类型', dataIndex: 'matchType', width: 110, sorter: (a, b) => compareText(a.matchType, b.matchType) },
+        { title: '曝光', dataIndex: 'impressions', width: 85, align: 'right', render: integer, sorter: (a, b) => compareNumber(a.impressions, b.impressions) },
+        { title: '点击', dataIndex: 'clicks', width: 75, align: 'right', render: integer, sorter: (a, b) => compareNumber(a.clicks, b.clicks) },
+        { title: '花费', dataIndex: 'spend', width: 90, align: 'right', render: money, sorter: (a, b) => compareNumber(a.spend, b.spend) },
+        { title: '订单', dataIndex: 'orders', width: 75, align: 'right', render: integer, sorter: (a, b) => compareNumber(a.orders, b.orders) },
+        { title: '销售额', dataIndex: 'sales', width: 95, align: 'right', render: money, sorter: (a, b) => compareNumber(a.sales, b.sales) },
+        { title: 'ACOS', width: 85, align: 'right', render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).acos), sorter: (a, b) => compareNumber(calculateMetrics([a]).acos, calculateMetrics([b]).acos) },
+      ]} /></Card>
+    </>}
+  </>;
 }
 
 interface CampaignPlacementSummary extends Metrics {
