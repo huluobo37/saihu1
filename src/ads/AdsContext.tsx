@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { deleteImport, getSetting, loadAll, replaceAll, saveImport, setSetting } from './db';
 import { parseBackup } from './backup';
+import { normalizeProductClassification } from './productClassification';
 import type { AdsRecord, ImportBatch, ImportPreview } from './types';
 
 interface Filters { dateRange: [string, string] | null; product: string | null; store: string | null; campaign: string | null; adType: string | null; status: string | null }
@@ -27,7 +28,10 @@ export function AdsProvider({ children }: { children: ReactNode }) {
   const [filters, setFilters] = useState<Filters>(initialFilters);
   const [filtersLoaded, setFiltersLoaded] = useState(false);
   const refresh = useCallback(async () => {
-    const data = await loadAll(); setRecords(data.records); setImports(data.imports); setLoading(false);
+    const data = await loadAll();
+    const normalized = normalizeProductClassification(data.records, data.imports);
+    if (normalized.changed) await replaceAll(normalized.records, normalized.imports);
+    setRecords(normalized.records); setImports(normalized.imports); setLoading(false);
   }, []);
   useEffect(() => {
     void Promise.all([refresh(), getSetting<Filters>('global-filters')]).then(([, savedFilters]) => {
