@@ -51,7 +51,16 @@ function DataScope({ reportTypes = ['campaign'] }: { reportTypes?: ReportType[] 
   const { records, filtered, filters, setFilters } = useAds();
   const scopedRecords = records.filter((record) => reportTypes.includes(record.reportType));
   const scopedFiltered = filtered.filter((record) => reportTypes.includes(record.reportType));
-  const unique = (field: 'product' | 'store' | 'campaign' | 'adType' | 'status') => [...new Set(scopedRecords.map((r) => field === 'product' ? (r.product ?? '未分类产品') : r[field]).filter((v): v is string => Boolean(v)))].sort();
+  const isInDateRange = (record: AdsRecord) => !filters.dateRange || Boolean(record.date && record.date >= filters.dateRange[0] && record.date <= filters.dateRange[1]);
+  const optionRows = (field: 'product' | 'store' | 'campaign' | 'adType' | 'status') => scopedRecords.filter((record) => {
+    if (!isInDateRange(record)) return false;
+    if (field !== 'product' && filters.product && (record.product ?? '未分类产品') !== filters.product) return false;
+    if (!['product', 'store'].includes(field) && filters.store && record.store !== filters.store) return false;
+    if (!['product', 'store', 'campaign'].includes(field) && filters.campaign && record.campaign !== filters.campaign) return false;
+    if (field === 'status' && filters.adType && record.adType !== filters.adType) return false;
+    return true;
+  });
+  const unique = (field: 'product' | 'store' | 'campaign' | 'adType' | 'status') => [...new Set(optionRows(field).map((r) => field === 'product' ? (r.product ?? '未分类产品') : r[field]).filter((v): v is string => Boolean(v)))].sort();
   const dates = [...new Set(scopedRecords.map((record) => record.date).filter((value): value is string => Boolean(value)))].sort();
   const maxDate = dates.length ? dayjs(dates.at(-1)) : null;
   const presets = maxDate ? [
@@ -63,7 +72,11 @@ function DataScope({ reportTypes = ['campaign'] }: { reportTypes?: ReportType[] 
   return <Card size="small" style={{ marginTop: 20 }}><Flex gap={10} wrap align="center">
     <Text strong>所有折线图日期范围</Text>
     <DatePicker.RangePicker presets={presets} value={filters.dateRange ? [dayjs(filters.dateRange[0]), dayjs(filters.dateRange[1])] : null} onChange={(values) => setFilters({ ...filters, dateRange: values ? [values[0]!.format('YYYY-MM-DD'), values[1]!.format('YYYY-MM-DD')] : null })} />
-    {(['product', 'store', 'campaign', 'adType', 'status'] as const).map((field) => <Select key={field} allowClear showSearch style={{ minWidth: field === 'campaign' ? 220 : field === 'product' ? 180 : 140 }} placeholder={{ product: '全部产品', store: '全部店铺', campaign: '全部广告活动', adType: '全部广告类型', status: '全部状态' }[field]} value={filters[field]} options={unique(field).map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, [field]: value ?? null })} />)}
+    <Select allowClear showSearch style={{ minWidth: 180 }} placeholder="全部产品" value={filters.product} options={unique('product').map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, product: value ?? null, store: null, campaign: null, adType: null, status: null })} />
+    <Select allowClear showSearch style={{ minWidth: 140 }} placeholder="全部店铺" value={filters.store} options={unique('store').map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, store: value ?? null, campaign: null, adType: null, status: null })} />
+    <Select allowClear showSearch style={{ minWidth: 220 }} placeholder="全部广告活动" value={filters.campaign} options={unique('campaign').map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, campaign: value ?? null, adType: null, status: null })} />
+    <Select allowClear showSearch style={{ minWidth: 140 }} placeholder="全部广告类型" value={filters.adType} options={unique('adType').map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, adType: value ?? null, status: null })} />
+    <Select allowClear showSearch style={{ minWidth: 140 }} placeholder="全部状态" value={filters.status} options={unique('status').map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, status: value ?? null })} />
     <Tag color="blue">{scopedFiltered.length} / {scopedRecords.length} 条</Tag>
   </Flex></Card>;
 }
