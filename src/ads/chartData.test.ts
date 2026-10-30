@@ -5,6 +5,7 @@ const row = (date: string, spend: number): AdsRecord => ({ id: date, importId: '
 
 describe('trend chart data', () => {
   it('calculates strict trailing averages without pretending incomplete windows are complete', () => {
+    expect(strictMovingAverage([1, 2, 3, 4], 3)).toEqual([null, null, 2, 3]);
     expect(strictMovingAverage([1, 2, 3, 4, 5, 6], 5)).toEqual([null, null, null, null, 3, 4]);
     expect(strictMovingAverage([1, 2, null, 4, 5], 5)).toEqual([null, null, null, null, null]);
   });
@@ -14,7 +15,9 @@ describe('trend chart data', () => {
     expect(data[4]?.spendMa5).toBe(3);
     expect(data[4]?.impressionsMa5).toBe(100);
     expect(data[4]?.clicksMa5).toBe(10);
-    expect(data[4]?.spendMa10).toBeNull();
+    expect(data[4]?.spendMa3).toBe(4);
+    expect(data[4]?.spendMa7).toBeNull();
+    expect(data[4]?.spendMa14).toBeNull();
   });
   it('keeps every calendar day on the x-axis when a report date is missing', () => {
     const data = buildTrendData([row('2026-10-01', 10), row('2026-10-03', 30)]);

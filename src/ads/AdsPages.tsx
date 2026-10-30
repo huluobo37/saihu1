@@ -237,7 +237,7 @@ const metricCharts: { title: string; metric: TrendMetric; formatter: (value: num
 ];
 
 function MovingAverageControls({ windows, setWindows }: { windows: MovingAverageWindow[]; setWindows: (values: MovingAverageWindow[]) => void }) {
-  const options = ([5, 10, 30] as MovingAverageWindow[]).map((value) => ({ label: `${value} 日移动平均`, value }));
+  const options = ([3, 5, 7, 14] as MovingAverageWindow[]).map((value) => ({ label: `${value} 日移动平均`, value }));
   return <Card size="small"><Flex gap={16} align="center" wrap><Text strong>折线显示</Text><Checkbox.Group options={options} value={windows} onChange={(values) => setWindows(values as MovingAverageWindow[])} /><Text type="secondary">灰线为每日数据，紫色虚线为所选期间平均</Text></Flex></Card>;
 }
 
@@ -248,7 +248,7 @@ export function CampaignDetailPage() {
   const navigate = useNavigate();
   const { records } = useAds();
   const [dateRange, setDateRange] = useState<[string, string] | null>(null);
-  const [windows, setWindows] = useState<MovingAverageWindow[]>([5, 10, 30]);
+  const [windows, setWindows] = useState<MovingAverageWindow[]>([3, 5, 7, 14]);
   useEffect(() => setDateRange(null), [campaignName]);
   const sameCampaign = (record: AdsRecord) => (record.campaign === campaignName || (!record.campaign && campaignName === '未命名活动')) && (!productName || (record.product ?? '未分类产品') === productName);
   const campaignRows = records.filter((record) => record.reportType === 'campaign' && sameCampaign(record));
@@ -274,7 +274,7 @@ export function CampaignDetailPage() {
     {!rows.length ? <Card style={{ marginTop: 16 }}><Empty description="所选日期范围内没有数据" /></Card> : <>
       <MetricCards metrics={calculateMetrics(rows)} />
       <div style={{ marginTop: 16 }}><MovingAverageControls windows={windows} setWindows={setWindows} /></div>
-      {dates.length < 30 && windows.includes(30) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前只有 ${dates.length} 个有效日期，30 日移动平均将在第 30 个有效日期后开始显示。`} />}
+      {dates.length < 14 && windows.includes(14) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前只有 ${dates.length} 个有效日期，14 日移动平均将在第 14 个有效日期后开始显示。`} />}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{metricCharts.map((chart) => <Col xs={24} xl={12} key={chart.metric}><TrendMetricChart title={chart.title} data={data} metric={chart.metric} formatter={chart.formatter} tickFormatter={chart.tickFormatter} windows={windows} rawColor={chart.color} /></Col>)}</Row>
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} xl={12}><Card title={`关联搜索词（${relatedSearchTerms.length} 条）`} extra={<Link to={`/search-terms?campaign=${encodeURIComponent(campaignName)}&product=${encodeURIComponent(productName || campaignRows[0]?.product || '')}`}>查看全部</Link>}><Table size="small" rowKey="id" dataSource={relatedSearchTerms.slice(0, 8)} pagination={false} columns={[{ title: '日期', dataIndex: 'date', width: 105 }, { title: '搜索词', dataIndex: 'searchTerm', ellipsis: true, render: (value: string | null, row: AdsRecord) => value ? <Link to={`/search-term-detail?searchTerm=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}&campaign=${encodeURIComponent(row.campaign ?? '')}`}>{value}</Link> : '—' }, { title: '广告组', dataIndex: 'adGroup', ellipsis: true }, { title: '花费', dataIndex: 'spend', width: 80, render: money }, { title: '订单', dataIndex: 'orders', width: 65, render: integer }]} locale={{ emptyText: '尚未导入该活动的搜索词报表' }} /></Card></Col>
@@ -287,10 +287,10 @@ export function CampaignDetailPage() {
 export function TrendsPage() {
   const { records, filtered } = useAds(); const campaignRecords = records.filter((row) => row.reportType === 'campaign'); const rows = filtered.filter((row) => row.reportType === 'campaign'); const dates = [...new Set(rows.map((r) => r.date).filter((v): v is string => Boolean(v)))].sort();
   const data = buildTrendData(rows);
-  const [windows, setWindows] = useState<MovingAverageWindow[]>([5, 10, 30]);
+  const [windows, setWindows] = useState<MovingAverageWindow[]>([3, 5, 7, 14]);
   return <><PageTitle title="趋势分析" subtitle="按广告活动日报日期聚合；搜索词和广告位数据不会重复计入" /><DataScope />{!campaignRecords.length ? <NoData /> : dates.length < 2 ? <><Alert style={{ marginTop: 16 }} type="warning" showIcon title="日期数量不足，暂不能判断趋势" description="当前仅有一个数据日期。下方保留单日汇总，未生成伪造折线。" /><MetricCards metrics={calculateMetrics(rows)} /></> : <>
     <div style={{ marginTop: 16 }}><MovingAverageControls windows={windows} setWindows={setWindows} /></div>
-    {dates.length < 30 && windows.includes(30) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前只有 ${dates.length} 个有效日期，30 日移动平均将在第 30 个有效日期后开始显示。`} />}
+    {dates.length < 14 && windows.includes(14) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前只有 ${dates.length} 个有效日期，14 日移动平均将在第 14 个有效日期后开始显示。`} />}
     <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{metricCharts.map((chart) => <Col xs={24} xl={12} key={chart.metric}><TrendMetricChart title={chart.title} data={data} metric={chart.metric} formatter={chart.formatter} tickFormatter={chart.tickFormatter} windows={windows} rawColor={chart.color} /></Col>)}</Row>
   </>}</>;
 }
@@ -337,7 +337,7 @@ export function SearchTermDetailPage() {
   const navigate = useNavigate();
   const { records } = useAds();
   const [dateRange, setDateRange] = useState<[string, string] | null>(null);
-  const [windows, setWindows] = useState<MovingAverageWindow[]>([5, 10, 30]);
+  const [windows, setWindows] = useState<MovingAverageWindow[]>([3, 5, 7, 14]);
   useEffect(() => setDateRange(null), [searchTerm, productName, campaignName]);
 
   const termRows = records.filter((record) => record.reportType === 'searchTerm'
@@ -369,7 +369,7 @@ export function SearchTermDetailPage() {
     {!rows.length ? <Card style={{ marginTop: 16 }}><Empty description="所选日期范围内没有数据" /></Card> : <>
       <MetricCards metrics={calculateMetrics(rows)} />
       <div style={{ marginTop: 16 }}><MovingAverageControls windows={windows} setWindows={setWindows} /></div>
-      {data.length < 30 && windows.includes(30) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前连续日期范围为 ${data.length} 日，30 日移动平均将在第 30 日后开始显示。`} />}
+      {data.length < 14 && windows.includes(14) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前连续日期范围为 ${data.length} 日，14 日移动平均将在第 14 日后开始显示。`} />}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{metricCharts.map((chart) => <Col xs={24} xl={12} key={chart.metric}><TrendMetricChart title={chart.title} data={data} metric={chart.metric} formatter={chart.formatter} tickFormatter={chart.tickFormatter} windows={windows} rawColor={chart.color} /></Col>)}</Row>
       <Card style={{ marginTop: 16 }} title="每日原始明细" styles={{ body: { padding: 0 } }}><Table rowKey="id" size="small" dataSource={[...rows].sort((a, b) => compareText(a.date, b.date))} pagination={tablePagination(20)} scroll={{ x: 1300 }} columns={[
         { title: '日期', dataIndex: 'date', fixed: 'left', width: 110, sorter: (a, b) => compareText(a.date, b.date) },
@@ -509,7 +509,7 @@ export function PlacementDetailPage() {
   const productName = params.get('product');
   const campaignName = params.get('campaign');
   const [dateRange, setDateRange] = useState<[string, string] | null>(null);
-  const [windows, setWindows] = useState<MovingAverageWindow[]>([5, 10, 30]);
+  const [windows, setWindows] = useState<MovingAverageWindow[]>([3, 5, 7, 14]);
   const allRows = records.filter((row) => row.reportType === 'placement'
     && (row.placement === placementName || (!row.placement && placementName === '未命名广告位'))
     && (!productName || (row.product ?? '未分类产品') === productName)
@@ -534,7 +534,7 @@ export function PlacementDetailPage() {
     {!rows.length ? <Card style={{ marginTop: 16 }}><Empty description="所选日期范围内没有数据" /></Card> : <>
       <MetricCards metrics={calculateMetrics(rows)} />
       <div style={{ marginTop: 16 }}><MovingAverageControls windows={windows} setWindows={setWindows} /></div>
-      {dates.length < 30 && windows.includes(30) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前只有 ${dates.length} 个有效日期，30 日移动平均将在第 30 个有效日期后开始显示。`} />}
+      {dates.length < 14 && windows.includes(14) && <Alert style={{ marginTop: 12 }} type="info" showIcon title={`当前只有 ${dates.length} 个有效日期，14 日移动平均将在第 14 个有效日期后开始显示。`} />}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{charts.map((chart) => <Col xs={24} xl={12} key={chart.metric}><TrendMetricChart title={chart.title} data={data} metric={chart.metric} formatter={chart.formatter} tickFormatter={chart.tickFormatter} windows={windows} rawColor={chart.color} /></Col>)}</Row>
     </>}
   </>;

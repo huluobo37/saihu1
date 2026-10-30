@@ -2,13 +2,14 @@ import { calculateMetrics, groupRecords } from './metrics';
 import type { AdsRecord, Metrics } from './types';
 
 export type TrendMetric = keyof Pick<Metrics, 'spend' | 'sales' | 'orders' | 'impressions' | 'clicks' | 'acos' | 'cpc' | 'ctr' | 'conversionRate' | 'roas'>;
-export type MovingAverageWindow = 5 | 10 | 30;
+export type MovingAverageWindow = 3 | 5 | 7 | 14;
 export type TrendPoint = { name: string; records: AdsRecord[] } & Metrics & Partial<Record<`${TrendMetric}Ma${MovingAverageWindow}`, number | null>>;
 
 export const MOVING_AVERAGE_COLORS: Record<MovingAverageWindow, string> = {
+  3: '#56B4E9',
   5: '#0072B2',
-  10: '#D55E00',
-  30: '#009E73',
+  7: '#D55E00',
+  14: '#009E73',
 };
 
 export function strictMovingAverage(values: (number | null)[], window: MovingAverageWindow) {
@@ -39,7 +40,7 @@ export function buildTrendData(rows: AdsRecord[]): TrendPoint[] {
     points = groupRecords(rows, () => '未知日期') as TrendPoint[];
   }
   const metrics: TrendMetric[] = ['spend', 'sales', 'orders', 'impressions', 'clicks', 'acos', 'cpc', 'ctr', 'conversionRate', 'roas'];
-  const windows: MovingAverageWindow[] = [5, 10, 30];
+  const windows: MovingAverageWindow[] = [3, 5, 7, 14];
   for (const metric of metrics) {
     const values = points.map((point) => point[metric]);
     for (const window of windows) {
