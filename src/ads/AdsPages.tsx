@@ -301,31 +301,76 @@ const compareText = (left: string | null | undefined, right: string | null | und
 const compareNumber = (left: number | null | undefined, right: number | null | undefined) =>
   (left ?? -1) - (right ?? -1);
 
+interface SearchTermSummary extends Metrics {
+  key: string;
+  dateRange: string;
+  product: string;
+  store: string;
+  campaign: string;
+  searchTerm: string;
+  searchTermTranslation: string;
+  target: string;
+  matchType: string;
+  adGroup: string;
+  portfolio: string;
+  linked: boolean;
+}
+
+const summaryText = (rows: AdsRecord[], field: keyof Pick<AdsRecord, 'searchTermTranslation' | 'target' | 'matchType' | 'adGroup' | 'portfolio'>) => {
+  const values = [...new Set(rows.map((row) => row[field]).filter((value): value is string => Boolean(value)))];
+  return values.length ? values.join('、') : '—';
+};
+
+function buildSearchTermSummaries(rows: AdsRecord[], campaignKeys: Set<string>) {
+  return groupRecords(rows, (row) => [
+    row.product ?? '未分类产品', row.store ?? '未知店铺', row.campaign ?? '未命名活动', row.searchTerm ?? '未命名搜索词',
+  ].join('\u0001')).map((group): SearchTermSummary => {
+    const sample = group.records[0]!;
+    const dates = group.records.map((row) => row.date).filter((value): value is string => Boolean(value)).sort();
+    return {
+      key: group.name,
+      dateRange: dates.length ? `${dates[0]} 至 ${dates.at(-1)}` : '—',
+      product: sample.product ?? '未分类产品',
+      store: sample.store ?? '未知店铺',
+      campaign: sample.campaign ?? '未命名活动',
+      searchTerm: sample.searchTerm ?? '未命名搜索词',
+      searchTermTranslation: summaryText(group.records, 'searchTermTranslation'),
+      target: summaryText(group.records, 'target'),
+      matchType: summaryText(group.records, 'matchType'),
+      adGroup: summaryText(group.records, 'adGroup'),
+      portfolio: summaryText(group.records, 'portfolio'),
+      linked: campaignKeys.has(relationKey(sample)),
+      ...calculateMetrics(group.records),
+    };
+  });
+}
+
 export function SearchTermsPage() {
   const { records, filtered } = useAds(); const [params] = useSearchParams(); const [search, setSearch] = useState('');
   const campaignParam = params.get('campaign'); const productParam = params.get('product');
   const campaignKeys = new Set(records.filter((row) => row.reportType === 'campaign').map(relationKey));
   const searchRecords = records.filter((row) => row.reportType === 'searchTerm');
-  const rows = filtered.filter((row) => row.reportType === 'searchTerm' && (!campaignParam || row.campaign === campaignParam) && (!productParam || row.product === productParam) && (!search || `${row.searchTerm ?? ''} ${row.searchTermTranslation ?? ''} ${row.campaign ?? ''}`.toLowerCase().includes(search.toLowerCase())));
-  const linked = rows.filter((row) => campaignKeys.has(relationKey(row))).length;
-  return <><PageTitle title="搜索词分析" subtitle="按产品、店铺和广告活动自动关联搜索词；指标使用搜索词报表自身口径" extra={<Tag color={linked === rows.length ? 'success' : 'warning'}>{linked} / {rows.length} 条已关联</Tag>} /><DataScope reportTypes={['searchTerm']} />{!searchRecords.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未导入搜索词日报" /></Card> : <><MetricCards metrics={calculateMetrics(rows)} /><Card style={{ marginTop: 16 }}><Input.Search allowClear style={{ maxWidth: 420, marginBottom: 16 }} placeholder="搜索用户搜索词、翻译或广告活动" onChange={(event) => setSearch(event.target.value)} /><Table rowKey="id" size="small" dataSource={rows} scroll={{ x: 1900 }} pagination={tablePagination(20)} columns={[
-    { title: '日期', dataIndex: 'date', fixed: 'left', width: 110, sorter: (a, b) => compareText(a.date, b.date) },
+  const detailRows = filtered.filter((row) => row.reportType === 'searchTerm' && (!campaignParam || row.campaign === campaignParam) && (!productParam || row.product === productParam));
+  const rows = buildSearchTermSummaries(detailRows, campaignKeys).filter((row) => !search || `${row.searchTerm} ${row.searchTermTranslation} ${row.campaign} ${row.adGroup} ${row.target}`.toLowerCase().includes(search.toLowerCase()));
+  const linked = rows.filter((row) => row.linked).length;
+  return <><PageTitle title="搜索词分析" subtitle="按所选日期范围汇总搜索词；可筛选广告活动并点击搜索词查看每日趋势" extra={<Tag color={linked === rows.length ? 'success' : 'warning'}>{linked} / {rows.length} 个搜索词已关联</Tag>} /><DataScope reportTypes={['searchTerm']} />{!searchRecords.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未导入搜索词日报" /></Card> : <><MetricCards metrics={calculateMetrics(detailRows)} /><Card style={{ marginTop: 16 }} title="搜索词汇总明细" extra={<Text type="secondary">每个搜索词按产品、店铺和广告活动汇总</Text>}><Input.Search allowClear style={{ maxWidth: 420, marginBottom: 16 }} placeholder="搜索用户搜索词、翻译、投放或广告活动" onChange={(event) => setSearch(event.target.value)} /><Table<SearchTermSummary> rowKey="key" size="small" dataSource={rows} scroll={{ x: 1900 }} pagination={tablePagination(20)} columns={[
+    { title: '日期范围', dataIndex: 'dateRange', fixed: 'left', width: 210, sorter: (a, b) => compareText(a.dateRange, b.dateRange) },
     { title: '产品', dataIndex: 'product', width: 120, sorter: (a, b) => compareText(a.product, b.product) },
     { title: '店铺', dataIndex: 'store', width: 85, sorter: (a, b) => compareText(a.store, b.store) },
-    { title: '用户搜索词', dataIndex: 'searchTerm', fixed: 'left', width: 220, ellipsis: true, sorter: (a, b) => compareText(a.searchTerm, b.searchTerm), render: (value: string | null, row: AdsRecord) => value ? <Link to={`/search-term-detail?searchTerm=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}&campaign=${encodeURIComponent(row.campaign ?? '')}`}>{value}　›</Link> : '—' },
+    { title: '用户搜索词', dataIndex: 'searchTerm', fixed: 'left', width: 220, ellipsis: true, sorter: (a, b) => compareText(a.searchTerm, b.searchTerm), render: (value: string, row) => <Link to={`/search-term-detail?searchTerm=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product)}&campaign=${encodeURIComponent(row.campaign)}`}>{value}　›</Link> },
     { title: '翻译', dataIndex: 'searchTermTranslation', width: 150, ellipsis: true, sorter: (a, b) => compareText(a.searchTermTranslation, b.searchTermTranslation) },
     { title: '投放', dataIndex: 'target', width: 190, ellipsis: true, sorter: (a, b) => compareText(a.target, b.target) },
     { title: '匹配类型', dataIndex: 'matchType', width: 100, sorter: (a, b) => compareText(a.matchType, b.matchType) },
     { title: '广告组', dataIndex: 'adGroup', width: 220, ellipsis: true, sorter: (a, b) => compareText(a.adGroup, b.adGroup) },
-    { title: '广告活动', dataIndex: 'campaign', width: 240, ellipsis: true, sorter: (a, b) => compareText(a.campaign, b.campaign), render: (value: string | null, row: AdsRecord) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '未分类产品')}`}>{value}</Link> : '—' },
+    { title: '广告活动', dataIndex: 'campaign', width: 240, ellipsis: true, sorter: (a, b) => compareText(a.campaign, b.campaign), render: (value: string, row) => <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product)}`}>{value}</Link> },
     { title: '广告组合', dataIndex: 'portfolio', width: 130, sorter: (a, b) => compareText(a.portfolio, b.portfolio) },
-    { title: '关联', width: 90, sorter: (a, b) => Number(campaignKeys.has(relationKey(a))) - Number(campaignKeys.has(relationKey(b))), render: (_: unknown, row: AdsRecord) => <Tag color={campaignKeys.has(relationKey(row)) ? 'success' : 'warning'}>{campaignKeys.has(relationKey(row)) ? '已关联' : '待活动报表'}</Tag> },
+    { title: '关联', dataIndex: 'linked', width: 100, sorter: (a, b) => Number(a.linked) - Number(b.linked), render: (value: boolean) => <Tag color={value ? 'success' : 'warning'}>{value ? '已关联' : '待活动报表'}</Tag> },
     { title: '曝光', dataIndex: 'impressions', width: 90, align: 'right', render: integer, sorter: (a, b) => compareNumber(a.impressions, b.impressions) },
     { title: '点击', dataIndex: 'clicks', width: 80, align: 'right', render: integer, sorter: (a, b) => compareNumber(a.clicks, b.clicks) },
     { title: '花费', dataIndex: 'spend', width: 90, align: 'right', render: money, sorter: (a, b) => compareNumber(a.spend, b.spend) },
     { title: '订单', dataIndex: 'orders', width: 75, align: 'right', render: integer, sorter: (a, b) => compareNumber(a.orders, b.orders) },
     { title: '销售额', dataIndex: 'sales', width: 95, align: 'right', render: money, sorter: (a, b) => compareNumber(a.sales, b.sales) },
-    { title: 'ACOS', width: 85, render: (_: unknown, row: AdsRecord) => percent(calculateMetrics([row]).acos), sorter: (a, b) => compareNumber(calculateMetrics([a]).acos, calculateMetrics([b]).acos) },
+    { title: 'ACOS', dataIndex: 'acos', width: 85, align: 'right', render: percent, sorter: (a, b) => compareNumber(a.acos, b.acos) },
   ]} /></Card></>}</>;
 }
 
