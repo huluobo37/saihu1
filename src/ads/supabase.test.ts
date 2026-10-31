@@ -1,6 +1,6 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { mergeBy, syncWithClient } from './supabase';
-import type { ImportBatch } from './types';
+import type { AdsRecord, ImportBatch } from './types';
 
 describe('cloud merge behavior', () => {
   it('keeps local-only and remote-only values while remote wins conflicts', () => {
@@ -15,5 +15,29 @@ describe('cloud merge behavior', () => {
     const client = { from: () => ({ upsert: async () => ({ error: { message: 'network unavailable' } }) }) } as unknown as SupabaseClient;
     await expect(syncWithClient(client, { id: 'user' } as User, [], imports)).rejects.toThrow('导入批次上传失败：network unavailable');
     expect(imports).toHaveLength(1);
+  });
+  it('inserts new records without overwriting an existing cloud record and includes product classification', async () => {
+    const calls: { table: string; rows: unknown[]; options: unknown }[] = [];
+    const client = {
+      from: (table: string) => ({
+        upsert: async (rows: unknown[], options: unknown) => {
+          calls.push({ table, rows, options });
+          return { error: null };
+        },
+        select: () => ({
+          order: async () => ({ data: [], error: null }),
+          then: (resolve: (value: { data: never[]; error: null }) => unknown) => resolve({ data: [], error: null }),
+        }),
+      }),
+    } as unknown as SupabaseClient;
+    const record: AdsRecord = {
+      id: 'record', importId: 'batch', product: 'SW 拔罐器', reportType: 'campaign', date: '2026-10-26',
+      store: 'US8', campaign: 'Campaign', adGroup: null, adType: null, status: null,
+      spend: 1, sales: 2, orders: 1, impressions: 10, clicks: 1, dailyBudget: null, raw: {},
+    };
+    await syncWithClient(client, { id: 'user' } as User, [record], []);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ table: 'ads_records', options: { onConflict: 'id', ignoreDuplicates: true } });
+    expect(calls[0]?.rows[0]).toMatchObject({ product: 'SW 拔罐器' });
   });
 });
