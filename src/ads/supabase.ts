@@ -93,6 +93,7 @@ export async function syncWithClient(
     import_id: `${user.id}:${record.importId}`,
     report_type: record.reportType,
     record_date: record.date,
+    product: record.product,
     store: record.store,
     campaign: record.campaign,
     ad_group: record.adGroup,
@@ -100,11 +101,14 @@ export async function syncWithClient(
   }));
 
   if (importRows.length) {
-    const { error } = await supabase.from('import_batches').upsert(importRows, { onConflict: 'id' });
+    // Imported ad reports are immutable snapshots.  Preserve an existing cloud
+    // row on a duplicate ID so a local browser cannot overwrite the user's
+    // already-synced advertising data.
+    const { error } = await supabase.from('import_batches').upsert(importRows, { onConflict: 'id', ignoreDuplicates: true });
     if (error) throw new Error(`导入批次上传失败：${error.message}`);
   }
   if (recordRows.length) {
-    const { error } = await supabase.from('ads_records').upsert(recordRows, { onConflict: 'id' });
+    const { error } = await supabase.from('ads_records').upsert(recordRows, { onConflict: 'id', ignoreDuplicates: true });
     if (error) throw new Error(`广告记录上传失败：${error.message}`);
   }
 
