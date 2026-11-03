@@ -16,7 +16,7 @@ describe('cloud merge behavior', () => {
     await expect(syncWithClient(client, { id: 'user' } as User, [], imports)).rejects.toThrow('导入批次上传失败：network unavailable');
     expect(imports).toHaveLength(1);
   });
-  it('inserts new records without overwriting an existing cloud record and includes product classification', async () => {
+  it('inserts new records without overwriting an existing cloud record and keeps product classification in the payload', async () => {
     const calls: { table: string; rows: unknown[]; options: unknown }[] = [];
     const client = {
       from: (table: string) => ({
@@ -38,6 +38,7 @@ describe('cloud merge behavior', () => {
     await syncWithClient(client, { id: 'user' } as User, [record], []);
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ table: 'ads_records', options: { onConflict: 'id', ignoreDuplicates: true } });
-    expect(calls[0]?.rows[0]).toMatchObject({ product: 'SW 拔罐器' });
+    expect(calls[0]?.rows[0]).toMatchObject({ payload: { product: 'SW 拔罐器' } });
+    expect(calls[0]?.rows[0]).not.toHaveProperty('product');
   });
 });

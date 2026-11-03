@@ -93,7 +93,6 @@ export async function syncWithClient(
     import_id: `${user.id}:${record.importId}`,
     report_type: record.reportType,
     record_date: record.date,
-    product: record.product,
     store: record.store,
     campaign: record.campaign,
     ad_group: record.adGroup,
