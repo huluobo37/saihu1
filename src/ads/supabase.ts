@@ -4,6 +4,7 @@ import type { AdsRecord, ImportBatch } from './types';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
+const SYNC_BATCH_SIZE = 200;
 
 export const isSupabaseConfigured = Boolean(url && publishableKey);
 
@@ -99,15 +100,14 @@ export async function syncWithClient(
     payload: record,
   }));
 
-  if (importRows.length) {
-    // Imported ad reports are immutable snapshots.  Preserve an existing cloud
-    // row on a duplicate ID so a local browser cannot overwrite the user's
-    // already-synced advertising data.
-    const { error } = await supabase.from('import_batches').upsert(importRows, { onConflict: 'id', ignoreDuplicates: true });
+  // Large reports can contain tens of thousands of rows. Uploading smaller,
+  // immutable batches prevents a single Supabase statement from timing out.
+  for (let start = 0; start < importRows.length; start += SYNC_BATCH_SIZE) {
+    const { error } = await supabase.from('import_batches').upsert(importRows.slice(start, start + SYNC_BATCH_SIZE), { onConflict: 'id', ignoreDuplicates: true });
     if (error) throw new Error(`导入批次上传失败：${error.message}`);
   }
-  if (recordRows.length) {
-    const { error } = await supabase.from('ads_records').upsert(recordRows, { onConflict: 'id', ignoreDuplicates: true });
+  for (let start = 0; start < recordRows.length; start += SYNC_BATCH_SIZE) {
+    const { error } = await supabase.from('ads_records').upsert(recordRows.slice(start, start + SYNC_BATCH_SIZE), { onConflict: 'id', ignoreDuplicates: true });
     if (error) throw new Error(`广告记录上传失败：${error.message}`);
   }
 
