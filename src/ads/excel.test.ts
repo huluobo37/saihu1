@@ -11,6 +11,17 @@ describe('Excel normalization', () => {
     const mapped = mapHeaders(['用户搜索词', '用户搜索词翻译', '所在广告组', '所在广告活动', '广告组合', '投放', '匹配类型', '广告位', '所属广告活动']);
     expect(mapped.map((item) => item.target)).toEqual(['searchTerm', 'searchTermTranslation', 'adGroup', 'campaign', 'portfolio', 'target', 'matchType', 'placement', 'campaign']);
   });
+  it('maps keyword targeting reports as ad-group-level detail instead of campaign totals', () => {
+    const mapped = mapHeaders(['日期', '店铺名称', '关键词', '关键词翻译', '所属广告活动', '所属广告组', '广告花费']);
+    const preview = {
+      batch: { id: 'keyword-batch', fingerprint: 'keyword:1:1', product: '磁吸盒', fileName: '关键词投放.xlsx', fileSize: 1, sheetName: 'sheet', importedAt: '2026-11-03T00:00:00.000Z', reportType: 'unknown', totalRows: 1, acceptedRows: 1, duplicateRows: 0, failedRows: 0, dateMin: null, dateMax: null, stores: [], headers: mapped.map((item) => item.source) },
+      records: [{ id: 'keyword:1:1:2', importId: 'keyword-batch', product: '磁吸盒', reportType: 'unknown', date: null, store: null, campaign: null, adGroup: null, adType: null, status: null, spend: null, sales: null, orders: null, impressions: null, clicks: null, dailyBudget: null, raw: { 日期: '2026-11-03', 店铺名称: 'US2', 关键词: 'magnetic box', 关键词翻译: '磁吸盒', 所属广告活动: 'Campaign A', 所属广告组: 'Group A', 广告花费: 1.5 } }],
+      mappings: mapped, errors: [], warnings: [],
+    } satisfies ImportPreview;
+    const remapped = remapPreview(preview, mapped);
+    expect(remapped.batch.reportType).toBe('adGroup');
+    expect(remapped.records[0]).toMatchObject({ target: 'magnetic box', searchTermTranslation: '磁吸盒', campaign: 'Campaign A', adGroup: 'Group A' });
+  });
   it('parses amounts, percentages and empty cells', () => {
     expect(parseNumber('1,234.50')).toBe(1234.5); expect(parseNumber('29.08%')).toBe(29.08); expect(parseNumber('')).toBeNull(); expect(parseNumber(null)).toBeNull();
   });

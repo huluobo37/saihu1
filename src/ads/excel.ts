@@ -26,8 +26,8 @@ const ALIASES: Partial<Record<Target, string[]>> = {
   portfolio: ['广告组合', 'portfolio'],
   placement: ['广告位', 'placement'],
   searchTerm: ['用户搜索词', '搜索词', 'customer search term', 'search term'],
-  searchTermTranslation: ['用户搜索词翻译', '搜索词翻译'],
-  target: ['投放', '投放词', '投放商品', 'targeting', 'target'],
+  searchTermTranslation: ['用户搜索词翻译', '搜索词翻译', '关键词翻译'],
+  target: ['投放', '投放词', '投放商品', '关键词', 'targeting', 'target', 'keyword'],
   matchType: ['匹配类型', 'match type'],
   adType: ['广告类型', '投放类型', '活动类型', 'campaign type', '广告活动类型'],
   status: ['有效状态', '广告状态', '状态', 'status', '活动状态'],
@@ -75,6 +75,8 @@ function inferReportType(mappings: MappingResult[]): ReportType {
   const targets = new Set(mappings.map((m) => m.target));
   if (targets.has('searchTerm')) return 'searchTerm';
   if (targets.has('placement')) return 'placement';
+  // 关键词投放报表含有广告活动与广告组字段，但不应被当作活动日报重复汇总。
+  if (targets.has('target')) return 'adGroup';
   if (targets.has('adGroup')) return 'adGroup';
   if (targets.has('campaign')) return 'campaign';
   return 'unknown';
