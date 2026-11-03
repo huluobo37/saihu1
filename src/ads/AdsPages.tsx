@@ -209,12 +209,52 @@ const recordColumns: ColumnsType<AdsRecord> = [
   { title: '每日预算', dataIndex: 'dailyBudget', width: 100, render: money, sorter: (a, b) => (a.dailyBudget ?? -1) - (b.dailyBudget ?? -1) }, { title: '广告类型', dataIndex: 'adType', width: 110 }, { title: '状态', dataIndex: 'status', width: 100 },
 ];
 
-export function CampaignPage() {
+export function CampaignPageDailyRows() {
   const { records, filtered } = useAds(); const [search, setSearch] = useState(''); const [raw, setRaw] = useState<AdsRecord | null>(null);
   const campaignRecords = records.filter((row) => row.reportType === 'campaign');
   const rows = filtered.filter((r) => r.reportType === 'campaign' && (!search || (r.campaign ?? '').toLowerCase().includes(search.toLowerCase())));
   const exportRows = () => { const sheet = XLSX.utils.json_to_sheet(rows.map((r) => ({ 产品: r.product ?? '未分类产品', 日期: r.date, 店铺名称: r.store, 广告活动: r.campaign, 广告花费: r.spend, 广告销售额: r.sales, 广告订单量: r.orders, 广告曝光量: r.impressions, 广告点击量: r.clicks, ACOS: calculateMetrics([r]).acos, CPC: calculateMetrics([r]).cpc, CTR: calculateMetrics([r]).ctr, 转化率: calculateMetrics([r]).conversionRate, ROAS: calculateMetrics([r]).roas, 每日预算: r.dailyBudget, 广告类型: r.adType, 有效状态: r.status }))); const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, '广告活动'); XLSX.writeFile(book, '广告活动筛选结果.xlsx'); };
   return <><PageTitle title="广告活动分析" subtitle="广告活动日报与重新计算指标；搜索词和广告位另行关联展示，不重复计入" extra={<Button icon={<DownloadOutlined />} disabled={!rows.length} onClick={exportRows}>导出筛选结果</Button>} /><DataScope />{!campaignRecords.length ? <NoData /> : <Card style={{ marginTop: 16 }}><Input.Search allowClear style={{ maxWidth: 360, marginBottom: 16 }} placeholder="搜索广告活动名称" onSearch={setSearch} onChange={(e) => setSearch(e.target.value)} /><Table rowKey="id" size="small" columns={[...recordColumns, { title: '原始记录', fixed: 'right', width: 100, render: (_, row) => <Button type="link" onClick={() => setRaw(row)}>查看</Button> }]} dataSource={rows} scroll={{ x: 1900 }} pagination={tablePagination(20)} /><Modal width={760} open={Boolean(raw)} onCancel={() => setRaw(null)} footer={null} title="完整原始记录"><Descriptions bordered size="small" column={1} items={Object.entries(raw?.raw ?? {}).map(([label, value]) => ({ key: label, label, children: value === null ? <Text type="secondary">null</Text> : String(value) }))} /></Modal></Card>}</>;
+}
+
+interface CampaignSummaryRow extends Metrics {
+  key: string;
+  product: string;
+  store: string;
+  campaign: string;
+  dateMin: string | null;
+  dateMax: string | null;
+  recordCount: number;
+}
+
+export function CampaignPage() {
+  const { records, filtered } = useAds();
+  const [search, setSearch] = useState('');
+  const campaignRecords = records.filter((row) => row.reportType === 'campaign');
+  const rows = filtered.filter((row) => row.reportType === 'campaign' && (!search || (row.campaign ?? '').toLowerCase().includes(search.toLowerCase())));
+  const summaryRows: CampaignSummaryRow[] = groupRecords(rows, (row) => [row.product ?? '未分类产品', row.store ?? '未知店铺', row.campaign ?? '未命名活动'].join('\u0000'))
+    .map((group) => {
+      const sample = group.records[0];
+      const dates = group.records.map((row) => row.date).filter((date): date is string => Boolean(date)).sort();
+      return { ...group, key: group.name, product: sample?.product ?? '未分类产品', store: sample?.store ?? '未知店铺', campaign: sample?.campaign ?? '未命名活动', dateMin: dates[0] ?? null, dateMax: dates.at(-1) ?? null, recordCount: group.records.length };
+    }).sort((a, b) => b.spend - a.spend);
+  const columns: ColumnsType<CampaignSummaryRow> = [
+    { title: '日期范围', width: 180, render: (_, row) => row.dateMin === row.dateMax ? row.dateMin ?? '—' : `${row.dateMin ?? '—'} 至 ${row.dateMax ?? '—'}` },
+    { title: '产品', dataIndex: 'product', width: 130, sorter: (a, b) => a.product.localeCompare(b.product) },
+    { title: '店铺', dataIndex: 'store', width: 100, sorter: (a, b) => a.store.localeCompare(b.store) },
+    { title: '广告活动', dataIndex: 'campaign', fixed: 'left', width: 280, ellipsis: true, sorter: (a, b) => a.campaign.localeCompare(b.campaign), render: (value, row) => <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product)}`}>{value}　›</Link> },
+    { title: '花费', dataIndex: 'spend', width: 105, align: 'right', render: money, sorter: (a, b) => a.spend - b.spend },
+    { title: '销售额', dataIndex: 'sales', width: 105, align: 'right', render: money, sorter: (a, b) => a.sales - b.sales },
+    { title: '订单', dataIndex: 'orders', width: 80, align: 'right', render: integer, sorter: (a, b) => a.orders - b.orders },
+    { title: '曝光', dataIndex: 'impressions', width: 100, align: 'right', render: integer, sorter: (a, b) => a.impressions - b.impressions },
+    { title: '点击', dataIndex: 'clicks', width: 80, align: 'right', render: integer, sorter: (a, b) => a.clicks - b.clicks },
+    { title: 'ACOS', dataIndex: 'acos', width: 90, render: percent, sorter: (a, b) => (a.acos ?? -1) - (b.acos ?? -1) },
+    { title: 'CPC', dataIndex: 'cpc', width: 80, render: money, sorter: (a, b) => (a.cpc ?? -1) - (b.cpc ?? -1) },
+    { title: 'CTR', dataIndex: 'ctr', width: 90, render: percent, sorter: (a, b) => (a.ctr ?? -1) - (b.ctr ?? -1) },
+    { title: '转化率', dataIndex: 'conversionRate', width: 90, render: percent, sorter: (a, b) => (a.conversionRate ?? -1) - (b.conversionRate ?? -1) },
+    { title: '每日记录', dataIndex: 'recordCount', width: 90, align: 'right', render: integer },
+  ];
+  return <><PageTitle title="广告活动分析" subtitle="按当前筛选的日期范围汇总展示广告活动；点击活动名称可查看每日明细" /><DataScope />{!campaignRecords.length ? <NoData /> : <Card style={{ marginTop: 16 }} title="广告活动汇总" extra={<Text type="secondary">{summaryRows.length} 个活动</Text>}><Input.Search allowClear style={{ maxWidth: 360, marginBottom: 16 }} placeholder="搜索广告活动名称" onSearch={setSearch} onChange={(event) => setSearch(event.target.value)} /><Table rowKey="key" size="small" columns={columns} dataSource={summaryRows} scroll={{ x: 1850 }} pagination={tablePagination(20)} /></Card>}</>;
 }
 
 function TrendMetricChart({ title, data, metric, formatter, tickFormatter, windows, rawColor }: {
