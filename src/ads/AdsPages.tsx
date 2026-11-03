@@ -4,7 +4,7 @@ import {
 } from '@ant-design/icons';
 import {
   Alert, App, AutoComplete, Button, Card, Checkbox, Col, DatePicker, Descriptions, Divider, Empty, Flex, Form, Input,
-  Modal, Result, Row, Select, Space, Statistic, Switch, Table, Tag, Typography, Upload,
+  InputNumber, Modal, Result, Row, Select, Space, Statistic, Switch, Table, Tag, Typography, Upload,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -78,7 +78,9 @@ function DataScope({ reportTypes = ['campaign'] }: { reportTypes?: ReportType[] 
     <Select allowClear showSearch style={{ minWidth: 140 }} placeholder="全部广告类型" value={filters.adType} options={unique('adType').map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, adType: value ?? null, status: null })} />
     <Select allowClear showSearch style={{ minWidth: 140 }} placeholder="全部状态" value={filters.status} options={unique('status').map((value) => ({ value, label: value }))} onChange={(value) => setFilters({ ...filters, status: value ?? null })} />
     <Tag color="blue">{scopedFiltered.length} / {scopedRecords.length} 条</Tag>
-  </Flex></Card>;
+    <Space.Compact><InputNumber aria-label="最小 ACOS" min={0} precision={2} placeholder="ACOS 最小%" value={filters.minAcos} onChange={(value) => setFilters({ ...filters, minAcos: value ?? null })} /><InputNumber aria-label="最大 ACOS" min={0} precision={2} placeholder="最大%" value={filters.maxAcos} onChange={(value) => setFilters({ ...filters, maxAcos: value ?? null })} /></Space.Compact>
+    <Space.Compact><InputNumber aria-label="最小 CVR" min={0} max={100} precision={2} placeholder="CVR 最小%" value={filters.minCvr} onChange={(value) => setFilters({ ...filters, minCvr: value ?? null })} /><InputNumber aria-label="最大 CVR" min={0} max={100} precision={2} placeholder="最大%" value={filters.maxCvr} onChange={(value) => setFilters({ ...filters, maxCvr: value ?? null })} /></Space.Compact>
+   </Flex></Card>;
 }
 
 function MetricCards({ metrics }: { metrics: Metrics }) {
