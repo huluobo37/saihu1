@@ -50,9 +50,12 @@ function NoData() {
 function DataScope({ reportTypes = ['campaign'] }: { reportTypes?: ReportType[] }) {
   const { records, filtered, filters, setFilters } = useAds();
   const scopedRecords = records.filter((record) => reportTypes.includes(record.reportType));
+  const campaignOptionRecords = reportTypes.includes('searchTerm')
+    ? records.filter((record) => record.reportType === 'campaign')
+    : scopedRecords;
   const scopedFiltered = filtered.filter((record) => reportTypes.includes(record.reportType));
   const isInDateRange = (record: AdsRecord) => !filters.dateRange || Boolean(record.date && record.date >= filters.dateRange[0] && record.date <= filters.dateRange[1]);
-  const optionRows = (field: 'product' | 'store' | 'campaign' | 'adType' | 'status') => scopedRecords.filter((record) => {
+  const optionRows = (field: 'product' | 'store' | 'campaign' | 'adType' | 'status') => (field === 'campaign' ? campaignOptionRecords : scopedRecords).filter((record) => {
     if (!isInDateRange(record)) return false;
     if (field !== 'product' && filters.product && (record.product ?? '未分类产品') !== filters.product) return false;
     if (!['product', 'store'].includes(field) && filters.store && record.store !== filters.store) return false;
