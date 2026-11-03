@@ -376,11 +376,12 @@ const summaryText = (rows: AdsRecord[], field: keyof Pick<AdsRecord, 'searchTerm
   return values.length ? values.join('、') : '—';
 };
 
-function buildSearchTermSummaries(rows: AdsRecord[], campaignKeys: Set<string>) {
+function buildSearchTermSummaries(rows: AdsRecord[], campaignKeys: Set<string>, adGroupsByCampaign: Map<string, string[]>) {
   return groupRecords(rows, (row) => [
     row.product ?? '未分类产品', row.store ?? '未知店铺', row.campaign ?? '未命名活动', row.searchTerm ?? '未命名搜索词',
   ].join('\u0001')).map((group): SearchTermSummary => {
     const sample = group.records[0]!;
+    const associatedGroups = adGroupsByCampaign.get(relationKey(sample)) ?? [];
     const dates = group.records.map((row) => row.date).filter((value): value is string => Boolean(value)).sort();
     return {
       key: group.name,
@@ -392,9 +393,9 @@ function buildSearchTermSummaries(rows: AdsRecord[], campaignKeys: Set<string>) 
       searchTermTranslation: summaryText(group.records, 'searchTermTranslation'),
       target: summaryText(group.records, 'target'),
       matchType: summaryText(group.records, 'matchType'),
-      adGroup: summaryText(group.records, 'adGroup'),
+      adGroup: associatedGroups.length ? associatedGroups.join('、') : summaryText(group.records, 'adGroup'),
       portfolio: summaryText(group.records, 'portfolio'),
-      linked: campaignKeys.has(relationKey(sample)),
+      linked: campaignKeys.has(relationKey(sample)) || associatedGroups.length > 0,
       ...calculateMetrics(group.records),
     };
   });
@@ -404,9 +405,14 @@ export function SearchTermsPage() {
   const { records, filtered } = useAds(); const [params] = useSearchParams(); const [search, setSearch] = useState('');
   const campaignParam = params.get('campaign'); const productParam = params.get('product');
   const campaignKeys = new Set(records.filter((row) => row.reportType === 'campaign').map(relationKey));
+  const adGroupsByCampaign = new Map<string, string[]>();
+  for (const row of records.filter((record) => record.reportType === 'adGroup' && record.adGroup)) {
+    const key = relationKey(row); const existing = adGroupsByCampaign.get(key) ?? [];
+    if (!existing.includes(row.adGroup!)) adGroupsByCampaign.set(key, [...existing, row.adGroup!]);
+  }
   const searchRecords = records.filter((row) => row.reportType === 'searchTerm');
   const detailRows = filtered.filter((row) => row.reportType === 'searchTerm' && (!campaignParam || row.campaign === campaignParam) && (!productParam || row.product === productParam));
-  const rows = buildSearchTermSummaries(detailRows, campaignKeys).filter((row) => !search || `${row.searchTerm} ${row.searchTermTranslation} ${row.campaign} ${row.adGroup} ${row.target}`.toLowerCase().includes(search.toLowerCase()));
+  const rows = buildSearchTermSummaries(detailRows, campaignKeys, adGroupsByCampaign).filter((row) => !search || `${row.searchTerm} ${row.searchTermTranslation} ${row.campaign} ${row.adGroup} ${row.target}`.toLowerCase().includes(search.toLowerCase()));
   const linked = rows.filter((row) => row.linked).length;
   return <><PageTitle title="搜索词分析" subtitle="按所选日期范围汇总搜索词；可筛选广告活动并点击搜索词查看每日趋势" extra={<Tag color={linked === rows.length ? 'success' : 'warning'}>{linked} / {rows.length} 个搜索词已关联</Tag>} /><DataScope reportTypes={['searchTerm']} />{!searchRecords.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未导入搜索词日报" /></Card> : <><MetricCards metrics={calculateMetrics(detailRows)} /><Card style={{ marginTop: 16 }} title="搜索词汇总明细" extra={<Text type="secondary">每个搜索词按产品、店铺和广告活动汇总</Text>}><Input.Search allowClear style={{ maxWidth: 420, marginBottom: 16 }} placeholder="搜索用户搜索词、翻译、投放或广告活动" onChange={(event) => setSearch(event.target.value)} /><Table<SearchTermSummary> rowKey="key" size="small" dataSource={rows} scroll={{ x: 1900 }} pagination={tablePagination(20)} columns={[
     { title: '日期范围', dataIndex: 'dateRange', fixed: 'left', width: 210, sorter: (a, b) => compareText(a.dateRange, b.dateRange) },
