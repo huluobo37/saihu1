@@ -543,6 +543,7 @@ export function KeywordRankingsPage() {
   const [manualKeywords, setManualKeywords] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [rankRows, setRankRows] = useState<RankLookupRow[]>([]);
+  const [dailyRankRows, setDailyRankRows] = useState<RankLookupRow[]>([]);
   const [trackingItems, setTrackingItems] = useState<RankTrackingItem[]>([]);
   const [trackingLoaded, setTrackingLoaded] = useState(false);
 
@@ -632,6 +633,22 @@ export function KeywordRankingsPage() {
     } catch (error) { message.error(error instanceof Error ? error.message : '小时排名抓取失败'); }
     finally { setLoading(false); }
   };
+  const runDailyLookup = async () => {
+    if (!/^[A-Z0-9]{10}$/i.test(ownAsin.trim())) { message.warning('请先输入有效的我方 ASIN（10 位）'); return; }
+    if (!selectedKeywords.length) { message.warning('请先勾选本次需要分析的关键词'); return; }
+    const supabase = getSupabaseClient();
+    if (!supabase) { message.error('请先在系统设置中配置 Supabase'); return; }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ results: RankLookupRow[] }>('xiyou-ranks', {
+        body: { ownAsin: ownAsin.trim(), competitorAsins: competitorAsins.split(/[，,\n]/).map((value) => value.trim()).filter(Boolean), country, date: rankDate.format('YYYY-MM-DD'), startDate: rankDate.subtract(29, 'day').format('YYYY-MM-DD'), endDate: rankDate.format('YYYY-MM-DD'), mode: 'daily', keywords: selectedKeywords },
+      });
+      if (error) throw error;
+      setDailyRankRows(data?.results ?? []);
+      message.success('每日排名趋势已更新');
+    } catch (error) { message.error(error instanceof Error ? error.message : '每日排名抓取失败'); }
+    finally { setLoading(false); }
+  };
 
   useEffect(() => {
     const activeItems = trackingItems.filter((item) => item.active);
@@ -674,7 +691,7 @@ export function KeywordRankingsPage() {
       </Row>
       <Alert type="info" showIcon style={{ marginTop: 16 }} message="可先使用上方筛选器选定广告活动并勾选投放关键词；也可直接在下方手动添加关键词。系统不会默认分析全部关键词。" />
     </Card>
-    <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button onClick={addTracking}>加入每小时追踪</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>抓取小时排名</Button></Space>}>
+    <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button onClick={addTracking}>加入每小时追踪</Button><Button loading={loading} onClick={() => void runDailyLookup()}>抓取每日排名</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>抓取小时排名</Button></Space>}>
       <Input.Search value={manualKeywordInput} onChange={(event) => setManualKeywordInput(event.target.value)} onSearch={addManualKeywords} enterButton="添加关键词" placeholder="直接输入关键词；可用逗号或换行一次添加多个" style={{ maxWidth: 560, marginBottom: 16 }} />
       <Table<RankKeywordChoice> rowKey="key" size="small" dataSource={keywordChoices} rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }} pagination={tablePagination(20)} scroll={{ x: 1200 }} columns={[
         { title: '投放关键词', dataIndex: 'keyword', fixed: 'left', width: 240 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '店铺', dataIndex: 'store', width: 100 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', width: 240, ellipsis: true }, { title: '匹配类型', dataIndex: 'matchType', width: 120 },
@@ -689,6 +706,11 @@ export function KeywordRankingsPage() {
     <Card style={{ marginTop: 16 }} title="小时排名结果" extra={<Text type="secondary">自然排名为 OR，SP 广告排名为 SP</Text>}>
       <Table<RankLookupRow> rowKey={(row) => `${row.keyword}:${row.asin}`} size="small" dataSource={rankRows} pagination={tablePagination(20)} scroll={{ x: 1000 }} columns={[
         { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新抓取时间', width: 200, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '流量分', width: 110, render: (_, row) => trafficScore(row)?.toFixed(2) ?? '未返回' }, { title: '状态', width: 260, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取小时数据</Tag> },
+      ]} />
+    </Card>
+    <Card style={{ marginTop: 16 }} title="每日排名结果" extra={<Text type="secondary">默认抓取截至所选日期的近 30 天每日排名</Text>}>
+      <Table<RankLookupRow> rowKey={(row) => `daily:${row.keyword}:${row.asin}`} size="small" dataSource={dailyRankRows} pagination={tablePagination(20)} scroll={{ x: 1000 }} columns={[
+        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新日期', width: 180, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '状态', width: 300, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取每日数据</Tag> },
       ]} />
     </Card>
   </>;

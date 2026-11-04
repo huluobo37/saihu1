@@ -10,6 +10,9 @@ type RankRequest = {
   country: string;
   date: string;
   keywords: string[];
+  mode?: "hourly" | "daily";
+  startDate?: string;
+  endDate?: string;
 };
 
 async function fetchHourlyRank(token: string, args: Record<string, unknown>) {
@@ -54,6 +57,7 @@ Deno.serve(async (request) => {
     const body = (await request.json()) as RankRequest;
     const ownAsin = body.ownAsin?.trim().toUpperCase();
     const keywords = [...new Set((body.keywords ?? []).map((value) => value.trim()).filter(Boolean))];
+    const mode = body.mode === "daily" ? "daily" : "hourly";
     const asins = [...new Set([
       ownAsin,
       ...(body.competitorAsins ?? []).map((value) => value.trim().toUpperCase()).filter(Boolean),
@@ -69,7 +73,15 @@ Deno.serve(async (request) => {
 
     const results = await Promise.all(asins.flatMap((asin) => keywords.map(async (keyword) => {
       try {
-        const result = await fetchHourlyRank(token, {
+        const result = await fetchHourlyRank(token, mode === "daily" ? {
+          asin,
+          keyword,
+          country: body.country,
+          start_date: body.startDate ?? body.date,
+          end_date: body.endDate ?? body.date,
+          user_task: "Retrieve daily organic and SP ad ranking trends for a selected keyword.",
+          intent_summary: "Return daily organic ranking and SP advertising ranking trends.",
+        } : {
           asin,
           keyword,
           country: body.country,
@@ -86,7 +98,8 @@ Deno.serve(async (request) => {
             error: response?.message ?? "XiYou has no hourly ranking data for this keyword and date",
           };
         }
-        return { asin, keyword, ...(response ?? {}), trends: Array.isArray(response?.trends) ? response.trends : [] };
+        const trends = Array.isArray(response?.trends) ? response.trends : Array.isArray(response?.data) ? response.data : [];
+        return { asin, keyword, ...(response ?? {}), trends };
       } catch (error) {
         return { asin, keyword, trends: [], error: error instanceof Error ? error.message : "Ranking request failed" };
       }
