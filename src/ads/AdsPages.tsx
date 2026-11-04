@@ -478,19 +478,19 @@ export function KeywordLibraryPage() {
   }));
 
   return <>
-    <PageTitle title="\u5173\u952e\u8bcd\u5e93\u8bc6\u522b" subtitle="\u4e0a\u4f20\u5173\u952e\u8bcd Excel \u6216\u76f4\u63a5\u8f93\u5165\u5173\u952e\u8bcd\uff0c\u8bc6\u522b\u7b5b\u9009\u65e5\u671f\u5185\u5df2\u51fa\u73b0\u7684\u641c\u7d22\u8bcd\u3001\u6295\u653e\u5173\u952e\u8bcd\u548c\u5e7f\u544a\u7ec4" />
+    <PageTitle title={'\u5173\u952e\u8bcd\u5e93\u8bc6\u522b'} subtitle={'\u4e0a\u4f20\u5173\u952e\u8bcd Excel \u6216\u76f4\u63a5\u8f93\u5165\u5173\u952e\u8bcd\uff0c\u8bc6\u522b\u7b5b\u9009\u65e5\u671f\u5185\u5df2\u51fa\u73b0\u7684\u641c\u7d22\u8bcd\u3001\u6295\u653e\u5173\u952e\u8bcd\u548c\u5e7f\u544a\u7ec4'} />
     <DataScope reportTypes={['searchTerm', 'adGroup']} />
     <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-      <Col xs={24} xl={10}><Card title="\u5173\u952e\u8bcd\u5e93">
+      <Col xs={24} xl={10}><Card title={'\u5173\u952e\u8bcd\u5e93'}>
         <Upload.Dragger accept=".xlsx" maxCount={1} showUploadList={false} beforeUpload={beforeUpload}>
           <p className="ant-upload-text">{'\u62d6\u62fd\u6216\u70b9\u51fb\u4e0a\u4f20\u5173\u952e\u8bcd Excel'}</p>
           <p className="ant-upload-hint">{'\u81ea\u52a8\u8bfb\u53d6“\u5173\u952e\u8bcd”\u5217\uff1b\u6ca1\u6709\u8be5\u5217\u65f6\u8bfb\u53d6\u7b2c\u4e00\u5217'}</p>
         </Upload.Dragger>
-        <Input.TextArea value={manualInput} onChange={(event) => setManualInput(event.target.value)} placeholder="\u4e5f\u53ef\u76f4\u63a5\u8f93\u5165\u5173\u952e\u8bcd\uff1a\u6bcf\u884c\u4e00\u4e2a\uff0c\u6216\u7528\u9017\u53f7\u5206\u9694" rows={5} style={{ marginTop: 12 }} />
+        <Input.TextArea value={manualInput} onChange={(event) => setManualInput(event.target.value)} placeholder={'\u4e5f\u53ef\u76f4\u63a5\u8f93\u5165\u5173\u952e\u8bcd\uff1a\u6bcf\u884c\u4e00\u4e2a\uff0c\u6216\u7528\u9017\u53f7\u5206\u9694'} rows={5} style={{ marginTop: 12 }} />
         <Space style={{ marginTop: 12 }}><Button type="primary" onClick={() => { addKeywords(manualInput.split(/[\n,\uff0c]/)); setManualInput(''); }}>{'\u52a0\u5165\u5173\u952e\u8bcd\u5e93'}</Button><Button danger onClick={() => setKeywords([])}>{'\u6e05\u7a7a'}</Button></Space>
         <Divider /><Text type="secondary">{'\u5f53\u524d\u5173\u952e\u8bcd\u5e93\uff1a'}{keywords.length}{' \u4e2a'}</Text>
       </Card></Col>
-      <Col xs={24} xl={14}><Card title="\u8bc6\u522b\u7ed3\u679c" extra={<Tag color="blue">{matches.length}{' \u6761\u547d\u4e2d\u660e\u7ec6'}</Tag>}>
+      <Col xs={24} xl={14}><Card title={'\u8bc6\u522b\u7ed3\u679c'} extra={<Tag color="blue">{matches.length}{' \u6761\u547d\u4e2d\u660e\u7ec6'}</Tag>}>
         <Table<KeywordMatchRow> rowKey={(row) => `${row.keyword}:${row.id}`} size="small" dataSource={matches} scroll={{ x: 1600 }} pagination={tablePagination(20)} columns={[
           { title: '\u5173\u952e\u8bcd\u5e93\u8bcd', dataIndex: 'keyword', fixed: 'left', width: 180 }, { title: '\u547d\u4e2d\u4f4d\u7f6e', dataIndex: 'matchedIn', width: 130, render: (value) => <Tag color="success">{value}</Tag> }, { title: '\u65e5\u671f', dataIndex: 'date', width: 110 }, { title: '\u4ea7\u54c1', dataIndex: 'product', width: 120 }, { title: '\u5e97\u94fa', dataIndex: 'store', width: 90 }, { title: '\u5e7f\u544a\u6d3b\u52a8', dataIndex: 'campaign', width: 240, ellipsis: true }, { title: '\u5e7f\u544a\u7ec4', dataIndex: 'adGroup', width: 220, ellipsis: true }, { title: '\u7528\u6237\u641c\u7d22\u8bcd', dataIndex: 'searchTerm', width: 200, ellipsis: true }, { title: '\u6295\u653e\u5173\u952e\u8bcd', dataIndex: 'target', width: 200, ellipsis: true }, { title: '\u5339\u914d\u7c7b\u578b', dataIndex: 'matchType', width: 110 }, { title: '\u66dd\u5149', dataIndex: 'impressions', width: 90, render: integer }, { title: '\u70b9\u51fb', dataIndex: 'clicks', width: 80, render: integer }, { title: '\u82b1\u8d39', dataIndex: 'spend', width: 90, render: money }, { title: '\u8ba2\u5355', dataIndex: 'orders', width: 80, render: integer }, { title: '\u9500\u552e\u989d', dataIndex: 'sales', width: 95, render: money },
         ]} />
