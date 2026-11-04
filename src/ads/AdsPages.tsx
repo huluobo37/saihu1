@@ -404,6 +404,101 @@ function buildSearchTermSummaries(rows: AdsRecord[], campaignKeys: Set<string>, 
   });
 }
 
+/* Legacy draft retained below only to avoid a partial-write parse error.
+interface KeywordMatchRow extends AdsRecord { keyword: string; matchedIn: string }
+
+export function KeywordLibraryPage() {
+  const { filtered } = useAds();
+  const { message } = App.useApp();
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [manualInput, setManualInput] = useState('');
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+  const addKeywords = (values: string[]) => setKeywords((current) => [...new Set([...current, ...values.map((value) => value.trim()).filter(Boolean)])]);
+  const beforeUpload = async (file: File) => {
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[workbook.SheetNames[0]!], { header: 1, defval: '' });
+      const header = (rows[0] ?? []).map((value) => String(value).trim().toLowerCase());
+      const index = header.findIndex((value) => ['关键词', '关键字', '用户搜索词', 'search term', 'keyword'].includes(value));
+      addKeywords(rows.slice(1).map((row) => String(row[index >= 0 ? index : 0] ?? '')));
+      message.success('关键词库已识别');
+    } catch { message.error('无法读取关键词 Excel，请确认文件格式'); }
+    return false;
+  };
+  const sourceRows = filtered.filter((row) => row.reportType === 'searchTerm' || row.reportType === 'adGroup');
+  const matches: KeywordMatchRow[] = sourceRows.flatMap((row) => keywords.flatMap((keyword) => {
+    const normalized = normalize(keyword);
+    const matchedIn = [
+      row.searchTerm && normalize(row.searchTerm) === normalized ? '用户搜索词' : null,
+      row.target && normalize(row.target) === normalized ? '投放关键词' : null,
+      row.adGroup && normalize(row.adGroup).includes(normalized) ? '广告组' : null,
+    ].filter(Boolean).join('、');
+    return matchedIn ? [{ ...row, keyword, matchedIn }] : [];
+  }));
+  return <><PageTitle title="关键词库识别" subtitle="上传关键词 Excel 或直接输入关键词，识别筛选日期内已出现的搜索词、投放关键词和广告组" /><DataScope reportTypes={['searchTerm', 'adGroup']} /><Row gutter={[16, 16]} style={{ marginTop: 16 }}><Col xs={24} xl={10}><Card title="关键词库"><Upload.Dragger accept=".xlsx" maxCount={1} showUploadList={false} beforeUpload={beforeUpload}><p className="ant-upload-text">拖拽或点击上传关键词 Excel</p><p className="ant-upload-hint">自动读取“关键词”列；没有该列时读取第一列</p></Upload.Dragger><Input.TextArea value={manualInput} onChange={(event) => setManualInput(event.target.value)} placeholder="也可直接输入关键词：每行一个，或用逗号分隔" rows={5} style={{ marginTop: 12 }} /><Button type="primary" style={{ marginTop: 12 }} onClick={() => { addKeywords(manualInput.split(/[\n,，]/)); setManualInput(''); }}>加入关键词库</Button><Divider /><Text type="secondary">当前关键词库：{keywords.length} 个</Text></Card></Col><Col xs={24} xl={14}><Card title="识别结果" extra={<Tag color="blue">{matches.length} 条命中明细</Tag>}><Table<KeywordMatchRow> rowKey={(row) => `${row.keyword}:${row.id}`} size="small" dataSource={matches} scroll={{ x: 1600 }} pagination={tablePagination(20)} columns={[{ title: '关键词库词', dataIndex: 'keyword', fixed: 'left', width: 180 }, { title: '命中位置', dataIndex: 'matchedIn', width: 130, render: (value) => <Tag color="success">{value}</Tag> }, { title: '日期', dataIndex: 'date', width: 110 }, { title: '产品', dataIndex: 'product', width: 120 }, { title: '店铺', dataIndex: 'store', width: 90 }, { title: '广告活动', dataIndex: 'campaign', width: 240, ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', width: 220, ellipsis: true }, { title: '用户搜索词', dataIndex: 'searchTerm', width: 200, ellipsis: true }, { title: '投放关键词', dataIndex: 'target', width: 200, ellipsis: true }, { title: '匹配类型', dataIndex: 'matchType', width: 110 }, { title: '曝光', dataIndex: 'impressions', width: 90, render: integer }, { title: '点击', dataIndex: 'clicks', width: 80, render: integer }, { title: '花费', dataIndex: 'spend', width: 90, render: money }, { title: '订单', dataIndex: 'orders', width: 80, render: integer }, { title: '销售额', dataIndex: 'sales', width: 95, render: money }]} /></Card></Col></Row></>;
+}
+
+*/
+
+interface KeywordMatchRow extends AdsRecord { keyword: string; matchedIn: string }
+
+export function KeywordLibraryPage() {
+  const { filtered } = useAds();
+  const { message } = App.useApp();
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [manualInput, setManualInput] = useState('');
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+  const addKeywords = (values: string[]) => setKeywords((current) => [...new Set([...current, ...values.map((value) => value.trim()).filter(Boolean)])]);
+
+  useEffect(() => { void getSetting<string[]>('keyword-library').then((saved) => { if (saved) setKeywords(saved); }); }, []);
+  useEffect(() => { void setSetting('keyword-library', keywords); }, [keywords]);
+
+  const beforeUpload = async (file: File) => {
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]!];
+      if (!sheet) throw new Error('empty workbook');
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
+      const header = (rows[0] ?? []).map((value) => String(value).trim().toLowerCase());
+      const column = header.findIndex((value) => ['\u5173\u952e\u8bcd', '\u5173\u952e\u5b57', '\u7528\u6237\u641c\u7d22\u8bcd', 'search term', 'keyword'].includes(value));
+      addKeywords(rows.slice(1).map((row) => String(row[column >= 0 ? column : 0] ?? '')));
+      message.success('\u5df2\u8bfb\u53d6\u5173\u952e\u8bcd Excel');
+    } catch { message.error('\u65e0\u6cd5\u8bfb\u53d6 Excel\uff0c\u8bf7\u786e\u8ba4\u6587\u4ef6\u683c\u5f0f'); }
+    return false;
+  };
+  const sourceRows = filtered.filter((row) => row.reportType === 'searchTerm' || row.reportType === 'adGroup');
+  const matches: KeywordMatchRow[] = sourceRows.flatMap((row) => keywords.flatMap((keyword) => {
+    const normalized = normalize(keyword);
+    const matchedIn = [
+      row.searchTerm && normalize(row.searchTerm) === normalized ? '\u7528\u6237\u641c\u7d22\u8bcd' : null,
+      row.target && normalize(row.target) === normalized ? '\u6295\u653e\u5173\u952e\u8bcd' : null,
+      row.adGroup && normalize(row.adGroup).includes(normalized) ? '\u5e7f\u544a\u7ec4' : null,
+    ].filter(Boolean).join('\u3001');
+    return matchedIn ? [{ ...row, keyword, matchedIn }] : [];
+  }));
+
+  return <>
+    <PageTitle title="\u5173\u952e\u8bcd\u5e93\u8bc6\u522b" subtitle="\u4e0a\u4f20\u5173\u952e\u8bcd Excel \u6216\u76f4\u63a5\u8f93\u5165\u5173\u952e\u8bcd\uff0c\u8bc6\u522b\u7b5b\u9009\u65e5\u671f\u5185\u5df2\u51fa\u73b0\u7684\u641c\u7d22\u8bcd\u3001\u6295\u653e\u5173\u952e\u8bcd\u548c\u5e7f\u544a\u7ec4" />
+    <DataScope reportTypes={['searchTerm', 'adGroup']} />
+    <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+      <Col xs={24} xl={10}><Card title="\u5173\u952e\u8bcd\u5e93">
+        <Upload.Dragger accept=".xlsx" maxCount={1} showUploadList={false} beforeUpload={beforeUpload}>
+          <p className="ant-upload-text">{'\u62d6\u62fd\u6216\u70b9\u51fb\u4e0a\u4f20\u5173\u952e\u8bcd Excel'}</p>
+          <p className="ant-upload-hint">{'\u81ea\u52a8\u8bfb\u53d6“\u5173\u952e\u8bcd”\u5217\uff1b\u6ca1\u6709\u8be5\u5217\u65f6\u8bfb\u53d6\u7b2c\u4e00\u5217'}</p>
+        </Upload.Dragger>
+        <Input.TextArea value={manualInput} onChange={(event) => setManualInput(event.target.value)} placeholder="\u4e5f\u53ef\u76f4\u63a5\u8f93\u5165\u5173\u952e\u8bcd\uff1a\u6bcf\u884c\u4e00\u4e2a\uff0c\u6216\u7528\u9017\u53f7\u5206\u9694" rows={5} style={{ marginTop: 12 }} />
+        <Space style={{ marginTop: 12 }}><Button type="primary" onClick={() => { addKeywords(manualInput.split(/[\n,\uff0c]/)); setManualInput(''); }}>{'\u52a0\u5165\u5173\u952e\u8bcd\u5e93'}</Button><Button danger onClick={() => setKeywords([])}>{'\u6e05\u7a7a'}</Button></Space>
+        <Divider /><Text type="secondary">{'\u5f53\u524d\u5173\u952e\u8bcd\u5e93\uff1a'}{keywords.length}{' \u4e2a'}</Text>
+      </Card></Col>
+      <Col xs={24} xl={14}><Card title="\u8bc6\u522b\u7ed3\u679c" extra={<Tag color="blue">{matches.length}{' \u6761\u547d\u4e2d\u660e\u7ec6'}</Tag>}>
+        <Table<KeywordMatchRow> rowKey={(row) => `${row.keyword}:${row.id}`} size="small" dataSource={matches} scroll={{ x: 1600 }} pagination={tablePagination(20)} columns={[
+          { title: '\u5173\u952e\u8bcd\u5e93\u8bcd', dataIndex: 'keyword', fixed: 'left', width: 180 }, { title: '\u547d\u4e2d\u4f4d\u7f6e', dataIndex: 'matchedIn', width: 130, render: (value) => <Tag color="success">{value}</Tag> }, { title: '\u65e5\u671f', dataIndex: 'date', width: 110 }, { title: '\u4ea7\u54c1', dataIndex: 'product', width: 120 }, { title: '\u5e97\u94fa', dataIndex: 'store', width: 90 }, { title: '\u5e7f\u544a\u6d3b\u52a8', dataIndex: 'campaign', width: 240, ellipsis: true }, { title: '\u5e7f\u544a\u7ec4', dataIndex: 'adGroup', width: 220, ellipsis: true }, { title: '\u7528\u6237\u641c\u7d22\u8bcd', dataIndex: 'searchTerm', width: 200, ellipsis: true }, { title: '\u6295\u653e\u5173\u952e\u8bcd', dataIndex: 'target', width: 200, ellipsis: true }, { title: '\u5339\u914d\u7c7b\u578b', dataIndex: 'matchType', width: 110 }, { title: '\u66dd\u5149', dataIndex: 'impressions', width: 90, render: integer }, { title: '\u70b9\u51fb', dataIndex: 'clicks', width: 80, render: integer }, { title: '\u82b1\u8d39', dataIndex: 'spend', width: 90, render: money }, { title: '\u8ba2\u5355', dataIndex: 'orders', width: 80, render: integer }, { title: '\u9500\u552e\u989d', dataIndex: 'sales', width: 95, render: money },
+        ]} />
+      </Card></Col>
+    </Row>
+  </>;
+}
+
 export function SearchTermsPage() {
   const { records, filtered } = useAds(); const [params] = useSearchParams(); const [search, setSearch] = useState('');
   const campaignParam = params.get('campaign'); const productParam = params.get('product');

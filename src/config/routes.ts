@@ -20,6 +20,7 @@ export const ROUTE_PATHS = [
   '/campaigns',
   '/campaign-detail',
   '/search-terms',
+  '/keyword-library',
   '/search-term-detail',
   '/trends',
   '/placements',
