@@ -77,7 +77,16 @@ Deno.serve(async (request) => {
           user_task: "Retrieve hourly organic and SP ad ranking for a selected keyword.",
           intent_summary: "Return hourly organic ranking and SP advertising ranking.",
         });
-        return { asin, keyword, ...(result.data ?? result) };
+        const response = result.data ?? result;
+        if (response?.error || Number(response?.status) >= 400) {
+          return {
+            asin,
+            keyword,
+            trends: [],
+            error: response?.message ?? "XiYou has no hourly ranking data for this keyword and date",
+          };
+        }
+        return { asin, keyword, ...(response ?? {}), trends: Array.isArray(response?.trends) ? response.trends : [] };
       } catch (error) {
         return { asin, keyword, trends: [], error: error instanceof Error ? error.message : "Ranking request failed" };
       }
