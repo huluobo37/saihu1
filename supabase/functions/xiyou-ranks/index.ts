@@ -55,6 +55,10 @@ Deno.serve(async (request) => {
 
   try {
     const body = (await request.json()) as RankRequest;
+    // XiYou's daily-trend tool still requires a `date` argument. Use the
+    // server's China-time date so a browser clock or selected report date
+    // cannot make the request invalid.
+    const systemDate = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const ownAsin = body.ownAsin?.trim().toUpperCase();
     const keywords = [...new Set((body.keywords ?? []).map((value) => value.trim()).filter(Boolean))];
     const mode = body.mode === "daily" ? "daily" : "hourly";
@@ -77,6 +81,7 @@ Deno.serve(async (request) => {
           asin,
           keyword,
           country: body.country,
+          date: systemDate,
           start_date: body.startDate ?? body.date,
           end_date: body.endDate ?? body.date,
           user_task: "Retrieve daily organic and SP ad ranking trends for a selected keyword.",

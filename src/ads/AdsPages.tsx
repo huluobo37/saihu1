@@ -531,6 +531,28 @@ function trafficScore(row: RankLookupRow): number | null {
   return null;
 }
 
+function DailyRankChart({ row }: { row: RankLookupRow }) {
+  const data = hourlyTrends(row)
+    .map((point) => ({
+      date: point.date?.slice(0, 10) ?? '—',
+      or: point.displayPositions?.find((item) => item.displayPosition.toLowerCase() === 'or')?.totalRank ?? null,
+      sp: point.displayPositions?.find((item) => item.displayPosition.toLowerCase() === 'sp')?.totalRank ?? null,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (!data.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可展示的每日排名数据" />;
+
+  return <div style={{ height: 300, minWidth: 680 }}><ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 16, right: 28, left: 4, bottom: 12 }}>
+    <CartesianGrid strokeDasharray="3 5" vertical={false} />
+    <XAxis dataKey="date" minTickGap={28} />
+    <YAxis reversed allowDecimals={false} label={{ value: '排名（数值越小越靠前）', angle: -90, position: 'insideLeft' }} />
+    <Tooltip formatter={(value, name) => [value ?? '未出现', name === 'or' ? '自然排名（OR）' : 'SP 广告排名']} />
+    <Legend formatter={(value) => value === 'or' ? '自然排名（OR）' : 'SP 广告排名'} />
+    <Line type="monotone" dataKey="or" stroke="#0072B2" strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} />
+    <Line type="monotone" dataKey="sp" stroke="#D55E00" strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} />
+  </LineChart></ResponsiveContainer></div>;
+}
+
 export function KeywordRankingsPage() {
   const { filtered } = useAds();
   const { message } = App.useApp();
@@ -708,9 +730,9 @@ export function KeywordRankingsPage() {
         { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新抓取时间', width: 200, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '流量分', width: 110, render: (_, row) => trafficScore(row)?.toFixed(2) ?? '未返回' }, { title: '状态', width: 260, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取小时数据</Tag> },
       ]} />
     </Card>
-    <Card style={{ marginTop: 16 }} title="每日排名结果" extra={<Text type="secondary">默认抓取截至所选日期的近 30 天每日排名</Text>}>
+    <Card style={{ marginTop: 16 }} title="每日排名结果" extra={<Text type="secondary">折线图展示每日自然排名与 SP 广告排名；接口日期使用服务器系统时间</Text>}>
       <Table<RankLookupRow> rowKey={(row) => `daily:${row.keyword}:${row.asin}`} size="small" dataSource={dailyRankRows} pagination={tablePagination(20)} scroll={{ x: 1000 }} columns={[
-        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新日期', width: 180, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '状态', width: 300, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取每日数据</Tag> },
+        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新日期', width: 180, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '状态', width: 300, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取每日数据</Tag> }, { title: '趋势图', width: 110, render: (_, row) => row.error ? '—' : <Button size="small" onClick={() => Modal.info({ title: `${row.keyword} · ${row.asin} 每日排名趋势`, width: 860, content: <DailyRankChart row={row} /> })}>查看折线图</Button> },
       ]} />
     </Card>
   </>;
