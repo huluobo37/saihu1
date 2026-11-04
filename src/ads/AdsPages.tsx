@@ -502,6 +502,8 @@ export function KeywordLibraryPage() {
 interface RankKeywordChoice { key: string; keyword: string; product: string | null; store: string | null; campaign: string | null; adGroup: string | null; matchType: string | null }
 interface HourlyRankPoint { date: string; displayPositions: { displayPosition: string; page?: number | null; pageRank?: number; totalRank?: number }[] }
 interface RankLookupRow { asin: string; keyword: string; trends: HourlyRankPoint[]; error?: string }
+interface RankTrackingItem { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; createdAt: string; lastFetchedAt?: string; trafficScore?: number | null }
+const RANK_TRACKING_SETTING = 'keyword-rank-tracking:v1';
 
 // XiYou can return an empty object (instead of an empty array) when a keyword
 // has no hourly ranking. Keep the results table resilient to that API shape.
@@ -517,6 +519,17 @@ function hourlyTrends(row: RankLookupRow): HourlyRankPoint[] {
   return [];
 }
 
+function trafficScore(row: RankLookupRow): number | null {
+  const trend = hourlyTrends(row).sort((a, b) => b.date.localeCompare(a.date))[0] as (HourlyRankPoint & Record<string, unknown>) | undefined;
+  if (!trend) return null;
+  for (const key of ['trafficScore', 'traffic_share', 'trafficShare', 'flowScore', 'flow_score']) {
+    const value = trend[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && Number.isFinite(Number(value))) return Number(value);
+  }
+  return null;
+}
+
 export function KeywordRankingsPage() {
   const { filtered } = useAds();
   const { message } = App.useApp();
@@ -529,6 +542,11 @@ export function KeywordRankingsPage() {
   const [manualKeywords, setManualKeywords] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [rankRows, setRankRows] = useState<RankLookupRow[]>([]);
+  const [trackingItems, setTrackingItems] = useState<RankTrackingItem[]>([]);
+  const [trackingLoaded, setTrackingLoaded] = useState(false);
+
+  useEffect(() => { void getSetting<RankTrackingItem[]>(RANK_TRACKING_SETTING).then((items) => { setTrackingItems(items ?? []); setTrackingLoaded(true); }); }, []);
+  useEffect(() => { if (trackingLoaded) void setSetting(RANK_TRACKING_SETTING, trackingItems); }, [trackingItems, trackingLoaded]);
 
   const reportKeywordChoices = filtered.filter((row) => row.reportType === 'adGroup' && row.target && row.campaign).map((row) => {
     const choice: RankKeywordChoice = { key: `${row.product ?? ''}|${row.store ?? ''}|${row.campaign ?? ''}|${row.adGroup ?? ''}|${row.target ?? ''}`, keyword: row.target!, product: row.product ?? null, store: row.store ?? null, campaign: row.campaign ?? null, adGroup: row.adGroup ?? null, matchType: row.matchType ?? null };
@@ -548,6 +566,28 @@ export function KeywordRankingsPage() {
     const point = [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0];
     return point?.displayPositions.find((item) => item.displayPosition === position)?.totalRank ?? null;
   };
+  const addTracking = () => {
+    if (!/^[A-Z0-9]{10}$/i.test(ownAsin.trim())) { message.warning('请先输入有效的我方 ASIN（10 位）'); return; }
+    if (!selectedKeywords.length) { message.warning('请先勾选需要追踪的关键词'); return; }
+    const choicesByKeyword = new Map(keywordChoices.map((choice) => [choice.keyword, choice]));
+    const now = new Date().toISOString();
+    setTrackingItems((current) => {
+      const next = [...current];
+      for (const keyword of selectedKeywords) {
+        const exists = next.some((item) => item.asin === ownAsin.trim() && item.keyword === keyword && item.country === country);
+        if (!exists) {
+          const choice = choicesByKeyword.get(keyword);
+          next.push({ id: crypto.randomUUID(), asin: ownAsin.trim(), keyword, country, product: choice?.product ?? null, campaign: choice?.campaign ?? null, active: true, createdAt: now });
+        }
+      }
+      return next;
+    });
+    message.success(`已加入 ${selectedKeywords.length} 个关键词的每小时追踪`);
+  };
+  const stopTracking = (id: string) => {
+    setTrackingItems((current) => current.map((item) => item.id === id ? { ...item, active: false } : item));
+    message.success('已停止该关键词的自动抓取');
+  };
   const runLookup = async () => {
     if (!/^[A-Z0-9]{10}$/i.test(ownAsin.trim())) { message.warning('请输入有效的我方 ASIN（10 位）'); return; }
     if (!selectedKeywords.length) { message.warning('请先勾选本次需要分析的关键词'); return; }
@@ -565,6 +605,35 @@ export function KeywordRankingsPage() {
     finally { setLoading(false); }
   };
 
+  useEffect(() => {
+    const activeItems = trackingItems.filter((item) => item.active);
+    if (!activeItems.length) return undefined;
+    const refresh = async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const grouped = new Map<string, RankTrackingItem[]>();
+      for (const item of activeItems) {
+        const key = `${item.asin}|${item.country}`;
+        grouped.set(key, [...(grouped.get(key) ?? []), item]);
+      }
+      for (const items of grouped.values()) {
+        const { data } = await supabase.functions.invoke<{ results: RankLookupRow[] }>('xiyou-ranks', {
+          body: { ownAsin: items[0]!.asin, country: items[0]!.country, date: dayjs().format('YYYY-MM-DD'), keywords: items.map((item) => item.keyword) },
+        });
+        const results = data?.results ?? [];
+        if (!results.length) continue;
+        const now = new Date().toISOString();
+        setRankRows((current) => [...results, ...current.filter((row) => !results.some((result) => result.asin === row.asin && result.keyword === row.keyword))]);
+        setTrackingItems((current) => current.map((item) => {
+          const result = results.find((row) => row.asin === item.asin && row.keyword === item.keyword);
+          return result ? { ...item, lastFetchedAt: now, trafficScore: trafficScore(result) } : item;
+        }));
+      }
+    };
+    const timer = window.setInterval(() => { void refresh(); }, 60 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [trackingItems]);
+
   return <>
     <PageTitle title="关键词排名分析" subtitle="按广告活动勾选本次关键词，抓取我方与竞品 ASIN 的小时自然排名和 SP 广告排名" />
     <DataScope reportTypes={['adGroup']} />
@@ -577,15 +646,21 @@ export function KeywordRankingsPage() {
       </Row>
       <Alert type="info" showIcon style={{ marginTop: 16 }} message="可先使用上方筛选器选定广告活动并勾选投放关键词；也可直接在下方手动添加关键词。系统不会默认分析全部关键词。" />
     </Card>
-    <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button type="primary" loading={loading} onClick={() => void runLookup()}>抓取小时排名</Button></Space>}>
+    <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button onClick={addTracking}>加入每小时追踪</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>抓取小时排名</Button></Space>}>
       <Input.Search value={manualKeywordInput} onChange={(event) => setManualKeywordInput(event.target.value)} onSearch={addManualKeywords} enterButton="添加关键词" placeholder="直接输入关键词；可用逗号或换行一次添加多个" style={{ maxWidth: 560, marginBottom: 16 }} />
       <Table<RankKeywordChoice> rowKey="key" size="small" dataSource={keywordChoices} rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }} pagination={tablePagination(20)} scroll={{ x: 1200 }} columns={[
         { title: '投放关键词', dataIndex: 'keyword', fixed: 'left', width: 240 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '店铺', dataIndex: 'store', width: 100 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', width: 240, ellipsis: true }, { title: '匹配类型', dataIndex: 'matchType', width: 120 },
       ]} />
     </Card>
+    <Card style={{ marginTop: 16 }} title="每小时追踪任务" extra={<Tag color="blue">运行中 {trackingItems.filter((item) => item.active).length} 个</Tag>}>
+      <Alert type="info" showIcon style={{ marginBottom: 16 }} message="追踪中的关键词会在本系统保持打开时每小时自动更新；停止后不会再新增排名记录。流量分由西柚返回的关键词流量字段自动标注。" />
+      <Table<RankTrackingItem> rowKey="id" size="small" dataSource={trackingItems} pagination={tablePagination(10)} scroll={{ x: 1200 }} columns={[
+        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '站点', dataIndex: 'country', width: 90 }, { title: '流量分', width: 110, render: (_, row) => row.trafficScore === null || row.trafficScore === undefined ? '待抓取' : row.trafficScore.toFixed(2) }, { title: '状态', width: 100, render: (_, row) => <Tag color={row.active ? 'success' : 'default'}>{row.active ? '追踪中' : '已停止'}</Tag> }, { title: '操作', width: 120, render: (_, row) => row.active ? <Button danger size="small" onClick={() => stopTracking(row.id)}>停止抓取</Button> : '—' },
+      ]} />
+    </Card>
     <Card style={{ marginTop: 16 }} title="小时排名结果" extra={<Text type="secondary">自然排名为 OR，SP 广告排名为 SP</Text>}>
       <Table<RankLookupRow> rowKey={(row) => `${row.keyword}:${row.asin}`} size="small" dataSource={rankRows} pagination={tablePagination(20)} scroll={{ x: 1000 }} columns={[
-        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新抓取时间', width: 200, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '状态', width: 260, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取小时数据</Tag> },
+        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新抓取时间', width: 200, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '流量分', width: 110, render: (_, row) => trafficScore(row)?.toFixed(2) ?? '未返回' }, { title: '状态', width: 260, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取小时数据</Tag> },
       ]} />
     </Card>
   </>;
