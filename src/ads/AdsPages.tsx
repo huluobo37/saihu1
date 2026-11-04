@@ -503,6 +503,20 @@ interface RankKeywordChoice { key: string; keyword: string; product: string | nu
 interface HourlyRankPoint { date: string; displayPositions: { displayPosition: string; page?: number | null; pageRank?: number; totalRank?: number }[] }
 interface RankLookupRow { asin: string; keyword: string; trends: HourlyRankPoint[]; error?: string }
 
+// XiYou can return an empty object (instead of an empty array) when a keyword
+// has no hourly ranking. Keep the results table resilient to that API shape.
+function hourlyTrends(row: RankLookupRow): HourlyRankPoint[] {
+  const value: unknown = row.trends;
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') {
+    const container = value as { data?: unknown; records?: unknown; list?: unknown };
+    for (const candidate of [container.data, container.records, container.list]) {
+      if (Array.isArray(candidate)) return candidate as HourlyRankPoint[];
+    }
+  }
+  return [];
+}
+
 export function KeywordRankingsPage() {
   const { filtered } = useAds();
   const { message } = App.useApp();
@@ -531,7 +545,7 @@ export function KeywordRankingsPage() {
   };
 
   const latestRank = (row: RankLookupRow, position: string) => {
-    const point = [...row.trends].sort((a, b) => b.date.localeCompare(a.date))[0];
+    const point = [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0];
     return point?.displayPositions.find((item) => item.displayPosition === position)?.totalRank ?? null;
   };
   const runLookup = async () => {
@@ -571,7 +585,7 @@ export function KeywordRankingsPage() {
     </Card>
     <Card style={{ marginTop: 16 }} title="小时排名结果" extra={<Text type="secondary">自然排名为 OR，SP 广告排名为 SP</Text>}>
       <Table<RankLookupRow> rowKey={(row) => `${row.keyword}:${row.asin}`} size="small" dataSource={rankRows} pagination={tablePagination(20)} scroll={{ x: 1000 }} columns={[
-        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新抓取时间', width: 200, render: (_, row) => [...row.trends].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '状态', width: 260, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取小时数据</Tag> },
+        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新抓取时间', width: 200, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '状态', width: 260, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取小时数据</Tag> },
       ]} />
     </Card>
   </>;
