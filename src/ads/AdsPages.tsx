@@ -503,6 +503,7 @@ interface RankKeywordChoice { key: string; keyword: string; product: string | nu
 interface HourlyRankPoint { date: string; displayPositions: { displayPosition: string; page?: number | null; pageRank?: number; totalRank?: number }[] }
 interface RankLookupRow { asin: string; keyword: string; trends: HourlyRankPoint[]; error?: string }
 interface RankTrackingItem { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; createdAt: string; lastFetchedAt?: string; trafficScore?: number | null }
+interface CloudRankTrackingRow { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; created_at: string; last_fetched_at: string | null; traffic_score: number | null }
 const RANK_TRACKING_SETTING = 'keyword-rank-tracking:v1';
 
 // XiYou can return an empty object (instead of an empty array) when a keyword
@@ -545,8 +546,35 @@ export function KeywordRankingsPage() {
   const [trackingItems, setTrackingItems] = useState<RankTrackingItem[]>([]);
   const [trackingLoaded, setTrackingLoaded] = useState(false);
 
-  useEffect(() => { void getSetting<RankTrackingItem[]>(RANK_TRACKING_SETTING).then((items) => { setTrackingItems(items ?? []); setTrackingLoaded(true); }); }, []);
-  useEffect(() => { if (trackingLoaded) void setSetting(RANK_TRACKING_SETTING, trackingItems); }, [trackingItems, trackingLoaded]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const localItems = await getSetting<RankTrackingItem[]>(RANK_TRACKING_SETTING) ?? [];
+      const session = await getCurrentSession();
+      const supabase = getSupabaseClient();
+      let cloudItems: RankTrackingItem[] = [];
+      if (session && supabase) {
+        const { data } = await supabase.from('keyword_rank_tracking').select('id, asin, keyword, country, product, campaign, active, created_at, last_fetched_at, traffic_score');
+        cloudItems = ((data ?? []) as CloudRankTrackingRow[]).map((item) => ({ id: item.id, asin: item.asin, keyword: item.keyword, country: item.country, product: item.product, campaign: item.campaign, active: item.active, createdAt: item.created_at, lastFetchedAt: item.last_fetched_at ?? undefined, trafficScore: item.traffic_score ?? undefined }));
+      }
+      // Local selections are authoritative. Cloud records only fill in items
+      // missing on this device, so refreshing or syncing never clears local work.
+      const merged = new Map(cloudItems.map((item) => [item.id, item]));
+      for (const item of localItems) merged.set(item.id, item);
+      if (!cancelled) { setTrackingItems([...merged.values()]); setTrackingLoaded(true); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (!trackingLoaded) return;
+    void setSetting(RANK_TRACKING_SETTING, trackingItems);
+    void (async () => {
+      const session = await getCurrentSession();
+      const supabase = getSupabaseClient();
+      if (!session || !supabase || !trackingItems.length) return;
+      await supabase.from('keyword_rank_tracking').upsert(trackingItems.map((item) => ({ id: item.id, asin: item.asin, keyword: item.keyword, country: item.country, product: item.product, campaign: item.campaign, active: item.active, created_at: item.createdAt, last_fetched_at: item.lastFetchedAt ?? null, traffic_score: item.trafficScore ?? null })), { onConflict: 'id' });
+    })();
+  }, [trackingItems, trackingLoaded]);
 
   const reportKeywordChoices = filtered.filter((row) => row.reportType === 'adGroup' && row.target && row.campaign).map((row) => {
     const choice: RankKeywordChoice = { key: `${row.product ?? ''}|${row.store ?? ''}|${row.campaign ?? ''}|${row.adGroup ?? ''}|${row.target ?? ''}`, keyword: row.target!, product: row.product ?? null, store: row.store ?? null, campaign: row.campaign ?? null, adGroup: row.adGroup ?? null, matchType: row.matchType ?? null };

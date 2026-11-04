@@ -17,3 +17,24 @@ create policy "own ads records" on public.ads_records for all using (auth.uid() 
 create index if not exists ads_records_user_date_idx on public.ads_records(user_id, record_date);
 alter table public.ads_records add column if not exists product text;
 create index if not exists ads_records_user_product_idx on public.ads_records(user_id, product);
+
+-- Persistent keyword/ASIN ranking tracking. The client always keeps a local
+-- copy first; these rows provide a second, account-scoped copy for recovery
+-- after a browser refresh, application upgrade, or device change.
+create table if not exists public.keyword_rank_tracking (
+  id text primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  asin text not null,
+  keyword text not null,
+  country text not null default 'US',
+  product text,
+  campaign text,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  last_fetched_at timestamptz,
+  traffic_score numeric
+);
+alter table public.keyword_rank_tracking enable row level security;
+drop policy if exists "own keyword rank tracking" on public.keyword_rank_tracking;
+create policy "own keyword rank tracking" on public.keyword_rank_tracking for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create index if not exists keyword_rank_tracking_user_active_idx on public.keyword_rank_tracking(user_id, active);
