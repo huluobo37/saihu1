@@ -8,7 +8,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { type Dayjs } from 'dayjs';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type Key, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import {
   Bar, BarChart, CartesianGrid, LabelList, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -21,7 +21,7 @@ import { MAPPING_TARGET_OPTIONS, parseExcel, remapPreview, type MappingTarget } 
 import type { AdsRecord, Metrics, ReportType } from './types';
 import { useAds } from './AdsContext';
 import { getSetting, replaceAll, setSetting } from './db';
-import { getCurrentSession, isSupabaseConfigured, signIn, signOut, signUp, subscribeToAuth, syncWithSupabase } from './supabase';
+import { getCurrentSession, getSupabaseClient, isSupabaseConfigured, signIn, signOut, signUp, subscribeToAuth, syncWithSupabase } from './supabase';
 import type { Session } from '@supabase/supabase-js';
 
 const { Title, Text, Paragraph } = Typography;
@@ -496,6 +496,73 @@ export function KeywordLibraryPage() {
         ]} />
       </Card></Col>
     </Row>
+  </>;
+}
+
+interface RankKeywordChoice { key: string; keyword: string; product: string | null; store: string | null; campaign: string | null; adGroup: string | null; matchType: string | null }
+interface HourlyRankPoint { date: string; displayPositions: { displayPosition: string; page?: number | null; pageRank?: number; totalRank?: number }[] }
+interface RankLookupRow { asin: string; keyword: string; trends: HourlyRankPoint[]; error?: string }
+
+export function KeywordRankingsPage() {
+  const { filtered } = useAds();
+  const { message } = App.useApp();
+  const [ownAsin, setOwnAsin] = useState('');
+  const [competitorAsins, setCompetitorAsins] = useState('');
+  const [country, setCountry] = useState('US');
+  const [rankDate, setRankDate] = useState<Dayjs>(dayjs());
+  const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [rankRows, setRankRows] = useState<RankLookupRow[]>([]);
+
+  const keywordChoices = [...new Map(filtered.filter((row) => row.reportType === 'adGroup' && row.target && row.campaign).map((row) => {
+    const choice: RankKeywordChoice = { key: `${row.product ?? ''}|${row.store ?? ''}|${row.campaign ?? ''}|${row.adGroup ?? ''}|${row.target ?? ''}`, keyword: row.target!, product: row.product ?? null, store: row.store ?? null, campaign: row.campaign ?? null, adGroup: row.adGroup ?? null, matchType: row.matchType ?? null };
+    return [choice.key, choice] as const;
+  })).values()];
+  const selectedKeywords = keywordChoices.filter((choice) => selectedKeys.includes(choice.key)).map((choice) => choice.keyword);
+
+  const latestRank = (row: RankLookupRow, position: string) => {
+    const point = [...row.trends].sort((a, b) => b.date.localeCompare(a.date))[0];
+    return point?.displayPositions.find((item) => item.displayPosition === position)?.totalRank ?? null;
+  };
+  const runLookup = async () => {
+    if (!/^[A-Z0-9]{10}$/i.test(ownAsin.trim())) { message.warning('请输入有效的我方 ASIN（10 位）'); return; }
+    if (!selectedKeywords.length) { message.warning('请先勾选本次需要分析的关键词'); return; }
+    const supabase = getSupabaseClient();
+    if (!supabase) { message.error('请先在系统设置中配置 Supabase'); return; }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ results: RankLookupRow[] }>('xiyou-ranks', {
+        body: { ownAsin: ownAsin.trim(), competitorAsins: competitorAsins.split(/[，,\n]/).map((value) => value.trim()).filter(Boolean), country, date: rankDate.format('YYYY-MM-DD'), keywords: selectedKeywords },
+      });
+      if (error) throw error;
+      setRankRows(data?.results ?? []);
+      message.success('小时排名已更新');
+    } catch (error) { message.error(error instanceof Error ? error.message : '小时排名抓取失败'); }
+    finally { setLoading(false); }
+  };
+
+  return <>
+    <PageTitle title="关键词排名分析" subtitle="按广告活动勾选本次关键词，抓取我方与竞品 ASIN 的小时自然排名和 SP 广告排名" />
+    <DataScope reportTypes={['adGroup']} />
+    <Card style={{ marginTop: 16 }} title="分析对象设置">
+      <Row gutter={[12, 12]}>
+        <Col xs={24} md={8}><Text strong>我方 ASIN</Text><Input value={ownAsin} onChange={(event) => setOwnAsin(event.target.value.toUpperCase())} placeholder="输入我方产品 ASIN" style={{ marginTop: 6 }} /></Col>
+        <Col xs={24} md={8}><Text strong>竞品 ASIN（可选）</Text><Input value={competitorAsins} onChange={(event) => setCompetitorAsins(event.target.value.toUpperCase())} placeholder="多个 ASIN 用逗号隔开" style={{ marginTop: 6 }} /></Col>
+        <Col xs={12} md={4}><Text strong>站点</Text><Select value={country} onChange={setCountry} options={[{ value: 'US', label: '美国站' }, { value: 'CA', label: '加拿大站' }, { value: 'UK', label: '英国站' }, { value: 'DE', label: '德国站' }]} style={{ width: '100%', marginTop: 6 }} /></Col>
+        <Col xs={12} md={4}><Text strong>抓取日期</Text><DatePicker value={rankDate} onChange={(value) => value && setRankDate(value)} style={{ width: '100%', marginTop: 6 }} /></Col>
+      </Row>
+      <Alert type="info" showIcon style={{ marginTop: 16 }} message="请先使用上方筛选器选定产品、店铺和广告活动，再在下表勾选本次分析的投放关键词。系统不会默认分析全部关键词。" />
+    </Card>
+    <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button type="primary" loading={loading} onClick={() => void runLookup()}>抓取小时排名</Button></Space>}>
+      <Table<RankKeywordChoice> rowKey="key" size="small" dataSource={keywordChoices} rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }} pagination={tablePagination(20)} scroll={{ x: 1200 }} columns={[
+        { title: '投放关键词', dataIndex: 'keyword', fixed: 'left', width: 240 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '店铺', dataIndex: 'store', width: 100 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', width: 240, ellipsis: true }, { title: '匹配类型', dataIndex: 'matchType', width: 120 },
+      ]} />
+    </Card>
+    <Card style={{ marginTop: 16 }} title="小时排名结果" extra={<Text type="secondary">自然排名为 OR，SP 广告排名为 SP</Text>}>
+      <Table<RankLookupRow> rowKey={(row) => `${row.keyword}:${row.asin}`} size="small" dataSource={rankRows} pagination={tablePagination(20)} scroll={{ x: 1000 }} columns={[
+        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新抓取时间', width: 200, render: (_, row) => [...row.trends].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '状态', width: 260, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取小时数据</Tag> },
+      ]} />
+    </Card>
   </>;
 }
 

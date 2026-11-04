@@ -12,6 +12,7 @@ export const NAVIGATION: NavNode[] = [
   { key: '/campaigns', labelKey: '广告活动分析', icon: 'chart' },
   { key: '/search-terms', labelKey: '搜索词分析', icon: 'search' },
   { key: '/keyword-library', labelKey: '关键词库识别', icon: 'search' },
+  { key: '/keyword-rankings', labelKey: '关键词排名分析', icon: 'trend' },
   { key: '/trends', labelKey: '趋势分析', icon: 'trend' },
   { key: '/placements', labelKey: '广告位分析', icon: 'placement' },
   { key: '/import', labelKey: '数据导入', icon: 'import' },
