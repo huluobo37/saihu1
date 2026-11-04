@@ -511,14 +511,24 @@ export function KeywordRankingsPage() {
   const [country, setCountry] = useState('US');
   const [rankDate, setRankDate] = useState<Dayjs>(dayjs());
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
+  const [manualKeywordInput, setManualKeywordInput] = useState('');
+  const [manualKeywords, setManualKeywords] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [rankRows, setRankRows] = useState<RankLookupRow[]>([]);
 
-  const keywordChoices = [...new Map(filtered.filter((row) => row.reportType === 'adGroup' && row.target && row.campaign).map((row) => {
+  const reportKeywordChoices = filtered.filter((row) => row.reportType === 'adGroup' && row.target && row.campaign).map((row) => {
     const choice: RankKeywordChoice = { key: `${row.product ?? ''}|${row.store ?? ''}|${row.campaign ?? ''}|${row.adGroup ?? ''}|${row.target ?? ''}`, keyword: row.target!, product: row.product ?? null, store: row.store ?? null, campaign: row.campaign ?? null, adGroup: row.adGroup ?? null, matchType: row.matchType ?? null };
-    return [choice.key, choice] as const;
-  })).values()];
+    return choice;
+  });
+  const keywordChoices = [...new Map([...reportKeywordChoices, ...manualKeywords.map((keyword) => ({ key: `manual|${keyword}`, keyword, product: null, store: null, campaign: '手动添加', adGroup: null, matchType: null }))].map((choice) => [choice.key, choice] as const)).values()];
   const selectedKeywords = keywordChoices.filter((choice) => selectedKeys.includes(choice.key)).map((choice) => choice.keyword);
+  const addManualKeywords = () => {
+    const additions = manualKeywordInput.split(/[，,\n]/).map((value) => value.trim()).filter(Boolean);
+    if (!additions.length) { message.warning('请输入至少一个关键词'); return; }
+    setManualKeywords((current) => [...new Set([...current, ...additions])]);
+    setManualKeywordInput('');
+    message.success(`已添加 ${additions.length} 个关键词`);
+  };
 
   const latestRank = (row: RankLookupRow, position: string) => {
     const point = [...row.trends].sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -551,9 +561,10 @@ export function KeywordRankingsPage() {
         <Col xs={12} md={4}><Text strong>站点</Text><Select value={country} onChange={setCountry} options={[{ value: 'US', label: '美国站' }, { value: 'CA', label: '加拿大站' }, { value: 'UK', label: '英国站' }, { value: 'DE', label: '德国站' }]} style={{ width: '100%', marginTop: 6 }} /></Col>
         <Col xs={12} md={4}><Text strong>抓取日期</Text><DatePicker value={rankDate} onChange={(value) => value && setRankDate(value)} style={{ width: '100%', marginTop: 6 }} /></Col>
       </Row>
-      <Alert type="info" showIcon style={{ marginTop: 16 }} message="请先使用上方筛选器选定产品、店铺和广告活动，再在下表勾选本次分析的投放关键词。系统不会默认分析全部关键词。" />
+      <Alert type="info" showIcon style={{ marginTop: 16 }} message="可先使用上方筛选器选定广告活动并勾选投放关键词；也可直接在下方手动添加关键词。系统不会默认分析全部关键词。" />
     </Card>
     <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button type="primary" loading={loading} onClick={() => void runLookup()}>抓取小时排名</Button></Space>}>
+      <Input.Search value={manualKeywordInput} onChange={(event) => setManualKeywordInput(event.target.value)} onSearch={addManualKeywords} enterButton="添加关键词" placeholder="直接输入关键词；可用逗号或换行一次添加多个" style={{ maxWidth: 560, marginBottom: 16 }} />
       <Table<RankKeywordChoice> rowKey="key" size="small" dataSource={keywordChoices} rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }} pagination={tablePagination(20)} scroll={{ x: 1200 }} columns={[
         { title: '投放关键词', dataIndex: 'keyword', fixed: 'left', width: 240 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '店铺', dataIndex: 'store', width: 100 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', width: 240, ellipsis: true }, { title: '匹配类型', dataIndex: 'matchType', width: 120 },
       ]} />
