@@ -531,6 +531,7 @@ const RANK_ANALYSIS_DRAFT_SETTING = 'keyword-rank-analysis-draft:v1';
 const ASIN_KEYWORD_LIBRARY_SETTING = 'asin-keyword-library:v1';
 const CAMPAIGN_RANK_DRAFT_SETTING = 'campaign-keyword-rank-draft:v1';
 const ASIN_TRAFFIC_DRAFT_SETTING = 'asin-traffic-query-draft:v1';
+const ASIN_TRAFFIC_RESULT_SETTING = 'asin-traffic-query-result:v1';
 
 // XiYou can return an empty object (instead of an empty array) when a keyword
 // has no hourly ranking. Keep the results table resilient to that API shape.
@@ -1073,9 +1074,11 @@ export function AsinTrafficKeywordsPage() {
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const [savedResults, setSavedResults] = useState<Record<string, { rows: AsinTrafficKeyword[]; total: number }>>({});
 
-  useEffect(() => { void getSetting<{ asin: string; country: string }>(ASIN_TRAFFIC_DRAFT_SETTING).then((draft) => { if (!asin && draft?.asin) setAsin(draft.asin); if (!params.get('country') && draft?.country) setCountry(draft.country); setDraftLoaded(true); }); }, []);
+  useEffect(() => { void Promise.all([getSetting<{ asin: string; country: string }>(ASIN_TRAFFIC_DRAFT_SETTING), getSetting<Record<string, { rows: AsinTrafficKeyword[]; total: number }>>(ASIN_TRAFFIC_RESULT_SETTING)]).then(([draft, results]) => { if (!asin && draft?.asin) setAsin(draft.asin); if (!params.get('country') && draft?.country) setCountry(draft.country); setSavedResults(results ?? {}); setDraftLoaded(true); }); }, []);
   useEffect(() => { if (draftLoaded) void setSetting(ASIN_TRAFFIC_DRAFT_SETTING, { asin, country }); }, [asin, country, draftLoaded]);
+  useEffect(() => { if (draftLoaded && asin) { const cached = savedResults[`${asin}|${country}`]; if (cached) { setRows(cached.rows); setTotal(cached.total); } } }, [asin, country, draftLoaded, savedResults]);
 
   const load = async () => {
     if (!/^[A-Z0-9]{10}$/.test(asin)) { setErrorText('ASIN 格式不正确'); return; }
@@ -1088,7 +1091,9 @@ export function AsinTrafficKeywordsPage() {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      setRows(data?.trafficKeywords ?? []); setTotal(data?.total ?? 0);
+      const nextRows = data?.trafficKeywords ?? []; const nextTotal = data?.total ?? 0;
+      setRows(nextRows); setTotal(nextTotal);
+      setSavedResults((current) => { const next = { ...current, [`${asin}|${country}`]: { rows: nextRows, total: nextTotal } }; void setSetting(ASIN_TRAFFIC_RESULT_SETTING, next); return next; });
     } catch (error) {
       const reason = error instanceof Error ? error.message : '流量词查询失败';
       setErrorText(reason); message.error(reason);
