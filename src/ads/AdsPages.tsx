@@ -559,6 +559,7 @@ function DailyRankChart({ row }: { row: RankLookupRow }) {
 export function KeywordRankingsPage() {
   const { filtered } = useAds();
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const [ownAsin, setOwnAsin] = useState('');
   const [competitorAsins, setCompetitorAsins] = useState('');
   const [country, setCountry] = useState('US');
@@ -746,13 +747,7 @@ export function KeywordRankingsPage() {
       setTrafficKeywordRows(data?.trafficKeywords ?? []); setTrafficKeywordTotal(data?.total ?? 0);
     } catch (error) { const reason = error instanceof Error ? error.message : '流量词查询失败'; setTrafficKeywordError(reason); message.error(reason); } finally { setTrafficLoading(false); }
   };
-  const trafficTotal = trafficKeywordRows.reduce((sum, row) => sum + (row.traffic?.total ?? 0), 0);
   const topTrafficKeyword = [...trafficKeywordRows].sort((a, b) => (b.traffic?.total ?? 0) - (a.traffic?.total ?? 0))[0];
-  const addTrafficKeywordToLibrary = (keyword: string) => {
-    saveKeywordsForAsin(ownAsin, [keyword]);
-    setManualKeywords((current) => [...new Set([...current, keyword])]);
-    message.success(`已将 “${keyword}” 加入当前 ASIN 关键词库`);
-  };
 
   useEffect(() => {
     const activeItems = trackingItems.filter((item) => item.active);
@@ -805,17 +800,7 @@ export function KeywordRankingsPage() {
     <Card className="sif-traffic-lookup" style={{ marginTop: 16 }} title="ASIN 流量词查询" extra={<Button type="primary" loading={trafficLoading} onClick={() => void runTrafficKeywordLookup()}>查询西柚流量词</Button>}>
       <Alert type="info" showIcon style={{ marginBottom: 12 }} message="使用上方的 ASIN 和站点查询西柚近 7 天流量词，按总流量降序展示。" />
       {trafficKeywordError && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={trafficKeywordError} />}
-      {!!trafficKeywordRows.length && <div className="traffic-summary-strip"><span><b>{trafficKeywordTotal}</b> 个流量词</span><span><b>{integer(trafficTotal)}</b> 近 7 天总流量</span><span>TOP 流量词：<b>{topTrafficKeyword?.searchTerm ?? '—'}</b></span><span>点击“加入库”可立即用于排名监控</span></div>}
-      <Table<AsinTrafficKeyword> rowKey={(row) => row.searchTerm} size="small" className="traffic-keyword-table" dataSource={trafficKeywordRows} pagination={tablePagination(20)} scroll={{ x: 1340 }} columns={[
-        { title: '#', width: 58, render: (_, __, index) => <Text type="secondary">{index + 1}</Text> },
-        { title: '流量词', dataIndex: 'searchTerm', fixed: 'left', width: 260, render: (value: string, row) => <div className="traffic-word"><b>{value}</b><div><Tag color={(row.traffic?.organic ?? 0) >= (row.traffic?.advertising ?? 0) ? 'green' : 'orange'}>{(row.traffic?.organic ?? 0) >= (row.traffic?.advertising ?? 0) ? '自然主导' : '广告主导'}</Tag><Text type="secondary">近 7 天</Text></div></div> },
-        { title: '流量占比 / 总流量', width: 190, render: (_, row) => { const total = row.traffic?.total ?? 0; const share = trafficTotal ? total / trafficTotal : 0; return <div className="traffic-share"><b>{percent(share)}</b><span>{integer(total)}</span><i><em style={{ width: `${Math.min(100, share * 100)}%` }} /></i></div>; } },
-        { title: '自然排名（OR）', width: 150, render: (_, row) => { const rank = row.ranks?.find((value) => value.position?.toLowerCase() === 'or')?.totalRank; return <span className="rank-badge rank-organic">{rank ? `#${rank}` : '未出现'}</span>; } },
-        { title: 'SP 广告排名', width: 150, render: (_, row) => { const rank = row.ranks?.find((value) => value.position?.toLowerCase() === 'sp')?.totalRank; return <span className="rank-badge rank-sponsored">{rank ? `#${rank}` : '未出现'}</span>; } },
-        { title: '获流结构', width: 215, render: (_, row) => { const organic = row.traffic?.organic ?? 0; const advertising = row.traffic?.advertising ?? 0; const total = organic + advertising; const organicRate = total ? (organic / total) * 100 : 0; return <div className="traffic-mix"><div><span>自然 {integer(organic)}</span><span>广告 {integer(advertising)}</span></div><i><em style={{ width: `${organicRate}%` }} /></i></div>; } },
-        { title: '获流率', width: 200, render: (_, row) => <div className="acquisition-rates"><span>总 <b>{percent(row.trafficAcquisitionRate?.total ?? null)}</b></span><span>自然 {percent(row.trafficAcquisitionRate?.organic ?? null)}</span><span>广告 {percent(row.trafficAcquisitionRate?.advertising ?? null)}</span></div> },
-        { title: '操作', fixed: 'right', width: 110, render: (_, row) => <Button type="link" size="small" onClick={() => addTrafficKeywordToLibrary(row.searchTerm)}>加入库</Button> },
-      ]} />
+      {!!trafficKeywordRows.length && <div className="traffic-summary-strip asin-traffic-entry"><span><b>{ownAsin.trim()}</b></span><span>{country} 站</span><span><b>{trafficKeywordTotal}</b> 个流量词</span><span>TOP 流量词：<b>{topTrafficKeyword?.searchTerm ?? '—'}</b></span><Button type="link" onClick={() => navigate(`/asin-traffic-keywords?asin=${encodeURIComponent(ownAsin.trim())}&country=${encodeURIComponent(country)}`)}>点击 ASIN 查看完整分析 →</Button></div>}
     </Card>
     <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button onClick={addTracking}>加入每小时追踪</Button><Button loading={loading} onClick={() => void runDailyLookup()}>抓取每日排名</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>读取西柚排名快照</Button></Space>}>
       <Input.Search value={manualKeywordInput} onChange={(event) => setManualKeywordInput(event.target.value)} onSearch={addManualKeywords} enterButton="添加关键词" placeholder="直接输入关键词；可用逗号或换行一次添加多个" style={{ maxWidth: 560, marginBottom: 16 }} />
@@ -837,6 +822,65 @@ export function KeywordRankingsPage() {
     <Card style={{ marginTop: 16 }} title="每日排名结果" extra={<Text type="secondary">折线图展示每日自然排名与 SP 广告排名；接口日期使用服务器系统时间</Text>}>
       <Table<RankLookupRow> rowKey={(row) => `daily:${row.keyword}:${row.asin}`} size="small" dataSource={dailyRankRows} pagination={tablePagination(20)} scroll={{ x: 1000 }} columns={[
         { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新日期', width: 180, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '状态', width: 300, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取每日数据</Tag> }, { title: '趋势图', width: 110, render: (_, row) => row.error ? '—' : <Button size="small" onClick={() => Modal.info({ title: `${row.keyword} · ${row.asin} 每日排名趋势`, width: 860, content: <DailyRankChart row={row} /> })}>查看折线图</Button> },
+      ]} />
+    </Card>
+  </div>;
+}
+
+export function AsinTrafficKeywordsPage() {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const { message } = App.useApp();
+  const asin = (params.get('asin') ?? '').trim().toUpperCase();
+  const country = params.get('country') ?? 'US';
+  const [rows, setRows] = useState<AsinTrafficKeyword[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  const load = async () => {
+    if (!/^[A-Z0-9]{10}$/.test(asin)) { setErrorText('ASIN 格式不正确'); return; }
+    const supabase = getSupabaseClient();
+    if (!supabase) { setErrorText('请先在系统设置中配置 Supabase'); return; }
+    setLoading(true); setErrorText(null);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ trafficKeywords: AsinTrafficKeyword[]; total: number; error?: string }>('xiyou-ranks', {
+        body: { operation: 'asin_keywords', ownAsin: asin, country, date: dayjs().format('YYYY-MM-DD'), keywords: [] },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setRows(data?.trafficKeywords ?? []); setTotal(data?.total ?? 0);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : '流量词查询失败';
+      setErrorText(reason); message.error(reason);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { void load(); }, [asin, country]);
+  const trafficTotal = rows.reduce((sum, row) => sum + (row.traffic?.total ?? 0), 0);
+  const topKeyword = [...rows].sort((a, b) => (b.traffic?.total ?? 0) - (a.traffic?.total ?? 0))[0];
+
+  return <div className="sif-rank-page">
+    <PageTitle title={`${asin || 'ASIN'} 流量词分析`} subtitle="按 ASIN 单独查看西柚已抓取的流量词、自然排名和 SP 广告排名" extra={<Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/keyword-rankings')}>返回关键词排名分析</Button>} />
+    <Card className="sif-traffic-lookup" style={{ marginTop: 16 }} title="ASIN 查询信息" extra={<Button type="primary" loading={loading} onClick={() => void load()}>刷新西柚快照</Button>}>
+      <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }} items={[
+        { key: 'asin', label: 'ASIN', children: <Text strong>{asin}</Text> },
+        { key: 'country', label: '站点', children: country },
+        { key: 'total', label: '流量词数量', children: total || rows.length },
+        { key: 'source', label: '数据来源', children: '西柚已抓取快照' },
+      ]} />
+    </Card>
+    {errorText && <Alert type="error" showIcon style={{ marginTop: 16 }} message={errorText} />}
+    <Card className="sif-traffic-lookup" style={{ marginTop: 16 }} title="流量词结果" extra={<Text type="secondary">按近 7 天总流量排序 · 来自西柚已抓取快照</Text>}>
+      {!!rows.length && <div className="traffic-summary-strip"><span><b>{total || rows.length}</b> 个流量词</span><span><b>{integer(trafficTotal)}</b> 近 7 天总流量</span><span>TOP 流量词：<b>{topKeyword?.searchTerm ?? '—'}</b></span><span>ASIN：<b>{asin}</b></span></div>}
+      <Table<AsinTrafficKeyword> rowKey={(row) => row.searchTerm} size="small" className="traffic-keyword-table" loading={loading} dataSource={rows} pagination={tablePagination(20)} scroll={{ x: 1260 }} locale={{ emptyText: loading ? '正在读取西柚已抓取快照…' : '暂无流量词数据' }} columns={[
+        { title: '#', width: 58, render: (_, __, index) => <Text type="secondary">{index + 1}</Text> },
+        { title: '流量词', dataIndex: 'searchTerm', fixed: 'left', width: 280, render: (value: string, row) => <div className="traffic-word"><b>{value}</b><div><Tag color={(row.traffic?.organic ?? 0) >= (row.traffic?.advertising ?? 0) ? 'green' : 'orange'}>{(row.traffic?.organic ?? 0) >= (row.traffic?.advertising ?? 0) ? '自然主导' : '广告主导'}</Tag><Text type="secondary">近 7 天</Text></div></div> },
+        { title: '流量占比 / 总流量', width: 190, render: (_, row) => { const itemTotal = row.traffic?.total ?? 0; const share = trafficTotal ? itemTotal / trafficTotal : 0; return <div className="traffic-share"><b>{percent(share)}</b><span>{integer(itemTotal)}</span><i><em style={{ width: `${Math.min(100, share * 100)}%` }} /></i></div>; } },
+        { title: '自然排名（OR）', width: 150, render: (_, row) => { const rank = row.ranks?.find((value) => value.position?.toLowerCase() === 'or')?.totalRank; return <span className="rank-badge rank-organic">{rank ? `#${rank}` : '未出现'}</span>; } },
+        { title: 'SP 广告排名', width: 150, render: (_, row) => { const rank = row.ranks?.find((value) => value.position?.toLowerCase() === 'sp')?.totalRank; return <span className="rank-badge rank-sponsored">{rank ? `#${rank}` : '未出现'}</span>; } },
+        { title: '获流结构', width: 215, render: (_, row) => { const organic = row.traffic?.organic ?? 0; const advertising = row.traffic?.advertising ?? 0; const itemTotal = organic + advertising; const organicRate = itemTotal ? (organic / itemTotal) * 100 : 0; return <div className="traffic-mix"><div><span>自然 {integer(organic)}</span><span>广告 {integer(advertising)}</span></div><i><em style={{ width: `${organicRate}%` }} /></i></div>; } },
+        { title: '获流率', width: 200, render: (_, row) => <div className="acquisition-rates"><span>总 <b>{percent(row.trafficAcquisitionRate?.total ?? null)}</b></span><span>自然 {percent(row.trafficAcquisitionRate?.organic ?? null)}</span><span>广告 {percent(row.trafficAcquisitionRate?.advertising ?? null)}</span></div> },
       ]} />
     </Card>
   </div>;
