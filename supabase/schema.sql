@@ -33,6 +33,8 @@ create table if not exists public.keyword_rank_tracking (
   created_at timestamptz not null default now(),
   last_fetched_at timestamptz,
   traffic_score numeric
+  ,group_id text
+  ,role text check (role in ('own', 'competitor'))
 );
 alter table public.keyword_rank_tracking enable row level security;
 drop policy if exists "own keyword rank tracking" on public.keyword_rank_tracking;

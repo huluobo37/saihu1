@@ -509,9 +509,9 @@ export function KeywordLibraryPage() {
 interface RankKeywordChoice { key: string; keyword: string; product: string | null; store: string | null; campaign: string | null; adGroup: string | null; matchType: string | null }
 interface HourlyRankPoint { date: string; displayPositions: { displayPosition: string; page?: number | null; pageRank?: number; totalRank?: number }[] }
 interface RankLookupRow { asin: string; keyword: string; trends: HourlyRankPoint[]; error?: string }
-interface RankTrackingItem { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; createdAt: string; lastFetchedAt?: string; trafficScore?: number | null }
+interface RankTrackingItem { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; createdAt: string; lastFetchedAt?: string; trafficScore?: number | null; groupId?: string; role?: 'own' | 'competitor' }
 interface RankHistoryPoint { asin: string; keyword: string; country: string; fetchedAt: string; organicRank: number | null; sponsoredRank: number | null; trafficScore: number | null }
-interface CloudRankTrackingRow { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; created_at: string; last_fetched_at: string | null; traffic_score: number | null }
+interface CloudRankTrackingRow { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; created_at: string; last_fetched_at: string | null; traffic_score: number | null; group_id?: string | null; role?: 'own' | 'competitor' | null }
 interface CloudAsinKeywordLibrary { asin: string; country: string; keywords: string[] }
 interface AsinTrafficKeyword {
   searchTerm: string;
@@ -610,35 +610,106 @@ function DailyRankChart({ row }: { row: RankLookupRow }) {
   </LineChart></ResponsiveContainer></div>;
 }
 
-function AsinHourlyRankChart({ points }: { points: RankHistoryPoint[] }) {
-  const data = points.map((point) => ({ time: dayjs(point.fetchedAt).format('MM-DD HH:mm'), or: point.organicRank, sp: point.sponsoredRank }));
-  if (!data.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚无小时排名记录；请先在关键词排名分析页读取快照或加入追踪" />;
+function AsinHourlyRankChart({ points, asins }: { points: RankHistoryPoint[]; asins: string[] }) {
+  const palette = ['#00a870', '#1677ff', '#d4380d', '#722ed1', '#08979c', '#fa8c16'];
+  const data = [...new Set(points.map((point) => point.fetchedAt))].sort().map((fetchedAt) => {
+    const row: Record<string, string | number | null> = { time: dayjs(fetchedAt).format('MM-DD HH:mm') };
+    for (const asin of asins) {
+      const point = points.find((value) => value.asin === asin && value.fetchedAt === fetchedAt);
+      row[`or_${asin}`] = point?.organicRank ?? null; row[`sp_${asin}`] = point?.sponsoredRank ?? null;
+    }
+    return row;
+  });
+  if (!data.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚无小时排名记录；请先抓取今日排名" />;
   return <div style={{ height: 270, minWidth: 520 }}><ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 16, right: 22, left: 2, bottom: 14 }}>
-    <CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="time" minTickGap={44} /><YAxis reversed allowDecimals={false} label={{ value: '排名（越小越靠前）', angle: -90, position: 'insideLeft' }} /><Tooltip formatter={(value, name) => [value ?? '未出现', name === 'or' ? '自然排名（OR）' : 'SP 广告排名']} /><Legend formatter={(value) => value === 'or' ? '自然排名（OR）' : 'SP 广告排名'} />
-    <Line type="monotone" dataKey="or" stroke="#00a870" strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} /><Line type="monotone" dataKey="sp" stroke="#ff7a00" strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} />
+    <CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="time" minTickGap={44} /><YAxis reversed allowDecimals={false} label={{ value: '排名（越小越靠前）', angle: -90, position: 'insideLeft' }} /><Tooltip formatter={(value, name) => [value ?? '未出现', String(name).startsWith('or_') ? `${String(name).slice(3)} 自然排名（OR）` : `${String(name).slice(3)} SP 广告排名`]} /><Legend formatter={(value) => String(value).startsWith('or_') ? `${String(value).slice(3)} OR` : `${String(value).slice(3)} SP`} />
+    {asins.flatMap((asin, index) => [<Line key={`or_${asin}`} type="monotone" dataKey={`or_${asin}`} name={`or_${asin}`} stroke={palette[index % palette.length]} strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} />, <Line key={`sp_${asin}`} type="monotone" dataKey={`sp_${asin}`} name={`sp_${asin}`} stroke={palette[index % palette.length]} strokeDasharray="6 4" strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} />])}
   </LineChart></ResponsiveContainer></div>;
 }
 
-function AsinHourlyRankCard({ asin, items, history }: { asin: string; items: RankTrackingItem[]; history: RankHistoryPoint[] }) {
-  const [keyword, setKeyword] = useState(items[0]?.keyword ?? '');
-  useEffect(() => { if (!items.some((item) => item.keyword === keyword)) setKeyword(items[0]?.keyword ?? ''); }, [items, keyword]);
-  const selected = items.find((item) => item.keyword === keyword) ?? items[0];
-  const points = history.filter((point) => point.asin === asin && point.keyword === keyword).sort((a, b) => a.fetchedAt.localeCompare(b.fetchedAt));
-  return <Card className="asin-hourly-rank-card" title={<Space><Text strong>{selected?.product || '未分类产品'}</Text><Tag color="green">{asin}</Tag></Space>} extra={<Tag color={items.some((item) => item.active) ? 'success' : 'default'}>{items.some((item) => item.active) ? '监控中' : '已停止'}</Tag>}>
-    <Flex justify="space-between" align="center" gap={12} wrap><Text type="secondary">{items.length} 个监控关键词 · {selected?.country || 'US'} 站 · 最近记录 {points.at(-1) ? dayjs(points.at(-1)!.fetchedAt).format('YYYY-MM-DD HH:mm') : '—'}</Text><Select value={keyword} onChange={setKeyword} style={{ minWidth: 260 }} options={items.map((item) => ({ value: item.keyword, label: item.keyword }))} /></Flex>
-    <div style={{ marginTop: 14 }}><AsinHourlyRankChart points={points} /></div>
-    <Flex justify="space-between" align="center" wrap gap={8}><Text type="secondary">广告活动：{selected?.campaign || '手动添加'} · 流量分：{selected?.trafficScore ?? '待读取'}</Text><Link to={`/keyword-rankings`}>管理关键词与追踪 →</Link></Flex>
+function AsinHourlyRankCard({ groupItems, history }: { groupItems: RankTrackingItem[]; history: RankHistoryPoint[] }) {
+  const asin = groupItems[0]?.asin ?? '';
+  const asins = [...new Set(groupItems.map((item) => item.asin))];
+  const keywordOptions = [...new Set(groupItems.map((item) => item.keyword))];
+  const [keyword, setKeyword] = useState(keywordOptions[0] ?? '');
+  useEffect(() => { if (!keywordOptions.includes(keyword)) setKeyword(keywordOptions[0] ?? ''); }, [keywordOptions.join('|'), keyword]);
+  const selected = groupItems.find((item) => item.keyword === keyword && item.role !== 'competitor') ?? groupItems.find((item) => item.keyword === keyword);
+  const points = history.filter((point) => asins.includes(point.asin) && point.keyword === keyword).sort((a, b) => a.fetchedAt.localeCompare(b.fetchedAt));
+  return <Card className="asin-hourly-rank-card" title={<Space><Text strong>{selected?.product || '未分类产品'}</Text><Tag color="green">{asin}</Tag>{asins.length > 1 && <Tag color="orange">含 {asins.length - 1} 个竞品 ASIN</Tag>}</Space>} extra={<Tag color={groupItems.some((item) => item.active) ? 'success' : 'default'}>{groupItems.some((item) => item.active) ? '监控中' : '已停止'}</Tag>}>
+    <Flex justify="space-between" align="center" gap={12} wrap><Text type="secondary">{keywordOptions.length} 个关键词 · {asins.length} 个 ASIN · {selected?.country || 'US'} 站 · 最近记录 {points.at(-1) ? dayjs(points.at(-1)!.fetchedAt).format('YYYY-MM-DD HH:mm') : '—'}</Text><Select value={keyword} onChange={setKeyword} style={{ minWidth: 260 }} options={keywordOptions.map((value) => ({ value, label: value }))} /></Flex>
+    <div style={{ marginTop: 14 }}><AsinHourlyRankChart points={points} asins={asins} /></div>
+    <Flex justify="space-between" align="center" wrap gap={8}><Text type="secondary">实线=自然排名 OR，虚线=SP 广告排名 · 颜色区分不同 ASIN</Text><Link to="/keyword-rankings">管理关键词与追踪 →</Link></Flex>
   </Card>;
 }
 
 export function AsinHourlyRankMonitorPage() {
+  const { message } = App.useApp();
   const [items, setItems] = useState<RankTrackingItem[]>([]);
   const [history, setHistory] = useState<RankHistoryPoint[]>([]);
+  const [asinInput, setAsinInput] = useState('');
+  const [competitorInput, setCompetitorInput] = useState('');
+  const [productInput, setProductInput] = useState('');
+  const [countryInput, setCountryInput] = useState('US');
+  const [keywordInput, setKeywordInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [fetching, setFetching] = useState(false);
   useEffect(() => { void Promise.all([getSetting<RankTrackingItem[]>(RANK_TRACKING_SETTING), getSetting<RankHistoryPoint[]>(RANK_HISTORY_SETTING)]).then(([savedItems, savedHistory]) => { setItems(savedItems ?? []); setHistory(savedHistory ?? []); }); }, []);
+  const addMonitoring = async () => {
+    const asin = asinInput.trim().toUpperCase();
+    const keywords = [...new Set(keywordInput.split(/[\n,，]/).map((value) => value.trim()).filter(Boolean))];
+    const competitorAsins = [...new Set(competitorInput.split(/[\n,，]/).map((value) => value.trim().toUpperCase()).filter(Boolean))];
+    if (!/^[A-Z0-9]{10}$/.test(asin)) { message.warning('请输入有效的 ASIN（10 位）'); return; }
+    if (competitorAsins.some((value) => !/^[A-Z0-9]{10}$/.test(value))) { message.warning('竞品 ASIN 必须是 10 位字母或数字'); return; }
+    if (!keywords.length) { message.warning('请输入至少一个需要监控的关键词'); return; }
+    const now = new Date().toISOString();
+    const groupId = `${asin}|${countryInput}`;
+    const monitoredAsins = [asin, ...competitorAsins];
+    const additions = monitoredAsins.flatMap((monitoredAsin) => keywords.filter((keyword) => !items.some((item) => item.asin === monitoredAsin && item.country === countryInput && item.keyword.toLowerCase() === keyword.toLowerCase())).map((keyword) => ({ id: crypto.randomUUID(), asin: monitoredAsin, keyword, country: countryInput, product: monitoredAsin === asin ? (productInput.trim() || null) : `竞品 ASIN · ${monitoredAsin}`, campaign: '手动添加', active: true, createdAt: now, groupId, role: monitoredAsin === asin ? 'own' as const : 'competitor' as const })));
+    if (!additions.length) { message.info('这些关键词已经在该 ASIN 的监控列表中'); return; }
+    setSaving(true);
+    const next = [...items, ...additions];
+    setItems(next); await setSetting(RANK_TRACKING_SETTING, next);
+    const session = await getCurrentSession(); const supabase = getSupabaseClient();
+    if (session && supabase) await supabase.from('keyword_rank_tracking').upsert(additions.map((item) => ({ id: item.id, asin: item.asin, keyword: item.keyword, country: item.country, product: item.product, campaign: item.campaign, active: item.active, created_at: item.createdAt })), { onConflict: 'id' });
+    setKeywordInput(''); setCompetitorInput(''); setSaving(false); message.success(`已为 ${asin} 添加 ${keywords.length} 个关键词，并纳入 ${competitorAsins.length} 个竞品对比`);
+  };
+  const fetchAllToday = async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) { message.error('请先在系统设置中配置 Supabase'); return; }
+    const active = items.filter((item) => item.active);
+    if (!active.length) { message.warning('请先添加至少一个 ASIN 监控关键词'); return; }
+    setFetching(true);
+    const grouped = new Map<string, RankTrackingItem[]>();
+    for (const item of active) grouped.set(`${item.asin}|${item.country}`, [...(grouped.get(`${item.asin}|${item.country}`) ?? []), item]);
+    const allResults: RankLookupRow[] = [];
+    try {
+      for (const group of grouped.values()) {
+        const { data, error } = await supabase.functions.invoke<{ results: RankLookupRow[] }>('xiyou-ranks', { body: { ownAsin: group[0]!.asin, country: group[0]!.country, date: dayjs().format('YYYY-MM-DD'), keywords: group.map((item) => item.keyword) } });
+        if (error) throw error;
+        allResults.push(...(data?.results ?? []));
+      }
+      await appendRankHistory(allResults);
+      setHistory(await getSetting<RankHistoryPoint[]>(RANK_HISTORY_SETTING) ?? []);
+      const now = new Date().toISOString();
+      const next = items.map((item) => { const result = allResults.find((row) => row.asin === item.asin && row.keyword.toLowerCase() === item.keyword.toLowerCase()); return result ? { ...item, lastFetchedAt: now, trafficScore: trafficScore(result) } : item; });
+      setItems(next); await setSetting(RANK_TRACKING_SETTING, next); message.success(`已读取 ${allResults.length} 条西柚当天排名快照`);
+    } catch (error) { message.error(error instanceof Error ? error.message : '西柚当天排名读取失败'); }
+    finally { setFetching(false); }
+  };
   const byAsin = new Map<string, RankTrackingItem[]>();
-  for (const item of items) byAsin.set(item.asin, [...(byAsin.get(item.asin) ?? []), item]);
-  return <div className="sif-rank-page"><PageTitle title="ASIN 小时排名监控" subtitle="以产品卡片展示每个 ASIN 的投放关键词小时排名变化；自然排名与 SP 广告排名同步绘制" extra={<Link to="/keyword-rankings"><Button type="primary">管理监控关键词</Button></Link>} />
-    {!items.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未建立 ASIN 关键词监控，请先在关键词排名分析中加入每小时追踪"><Link to="/keyword-rankings"><Button type="primary">前往设置监控</Button></Link></Empty></Card> : <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{[...byAsin.entries()].map(([asin, group]) => <Col xs={24} xl={12} key={asin}><AsinHourlyRankCard asin={asin} items={group} history={history} /></Col>)}</Row>}
+  for (const item of items) { const key = item.groupId ?? `${item.asin}|${item.country}`; byAsin.set(key, [...(byAsin.get(key) ?? []), item]); }
+  return <div className="sif-rank-page"><PageTitle title="ASIN 小时排名监控" subtitle="以产品卡片展示每个 ASIN 的投放关键词小时排名变化；自然排名与 SP 广告排名同步绘制" extra={<Space><Button type="primary" loading={fetching} onClick={() => void fetchAllToday()}>抓取今日全部排名</Button><Link to="/keyword-rankings"><Button>查看关键词排名分析</Button></Link></Space>} />
+    <Card style={{ marginTop: 16 }} title="添加 ASIN 关键词小时监控" extra={<Text type="secondary">添加后点击“抓取今日全部排名”，自动读取该 ASIN 下所有监控关键词的西柚排名</Text>}>
+      <Row gutter={[12, 12]}>
+        <Col xs={24} md={6}><Text strong>ASIN</Text><Input value={asinInput} onChange={(event) => setAsinInput(event.target.value.toUpperCase())} placeholder="输入 10 位 ASIN" style={{ marginTop: 6 }} /></Col>
+        <Col xs={24} md={5}><Text strong>产品名称（可选）</Text><Input value={productInput} onChange={(event) => setProductInput(event.target.value)} placeholder="如：止鼾机、SW 拔罐器" style={{ marginTop: 6 }} /></Col>
+        <Col xs={24} md={4}><Text strong>站点</Text><Select value={countryInput} onChange={setCountryInput} options={[{ value: 'US', label: '美国站' }, { value: 'CA', label: '加拿大站' }, { value: 'UK', label: '英国站' }, { value: 'DE', label: '德国站' }]} style={{ width: '100%', marginTop: 6 }} /></Col>
+        <Col xs={24} md={5}><Text strong>竞品 ASIN（可选）</Text><Input value={competitorInput} onChange={(event) => setCompetitorInput(event.target.value.toUpperCase())} placeholder="多个 ASIN 用逗号分隔" style={{ marginTop: 6 }} /></Col>
+        <Col xs={24} md={4}><Text strong>关键词</Text><Input.TextArea value={keywordInput} onChange={(event) => setKeywordInput(event.target.value)} placeholder="每行一个" autoSize={{ minRows: 1, maxRows: 3 }} style={{ marginTop: 6 }} /></Col>
+      </Row>
+      <Flex justify="flex-end" style={{ marginTop: 12 }}><Button type="primary" loading={saving} onClick={() => void addMonitoring()}>添加到小时监控</Button></Flex>
+    </Card>
+    {!items.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未建立 ASIN 关键词监控，请先在上方添加" /></Card> : <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{[...byAsin.entries()].map(([groupKey, group]) => <Col xs={24} xl={12} key={groupKey}><AsinHourlyRankCard groupItems={group} history={history} /></Col>)}</Row>}
   </div>;
 }
 
@@ -675,8 +746,8 @@ export function KeywordRankingsPage() {
       const supabase = getSupabaseClient();
       let cloudItems: RankTrackingItem[] = [];
       if (session && supabase) {
-        const { data } = await supabase.from('keyword_rank_tracking').select('id, asin, keyword, country, product, campaign, active, created_at, last_fetched_at, traffic_score');
-        cloudItems = ((data ?? []) as CloudRankTrackingRow[]).map((item) => ({ id: item.id, asin: item.asin, keyword: item.keyword, country: item.country, product: item.product, campaign: item.campaign, active: item.active, createdAt: item.created_at, lastFetchedAt: item.last_fetched_at ?? undefined, trafficScore: item.traffic_score ?? undefined }));
+        const { data } = await supabase.from('keyword_rank_tracking').select('id, asin, keyword, country, product, campaign, active, created_at, last_fetched_at, traffic_score, group_id, role');
+        cloudItems = ((data ?? []) as CloudRankTrackingRow[]).map((item) => ({ id: item.id, asin: item.asin, keyword: item.keyword, country: item.country, product: item.product, campaign: item.campaign, active: item.active, createdAt: item.created_at, lastFetchedAt: item.last_fetched_at ?? undefined, trafficScore: item.traffic_score ?? undefined, groupId: item.group_id ?? undefined, role: item.role ?? undefined }));
       }
       // Local selections are authoritative. Cloud records only fill in items
       // missing on this device, so refreshing or syncing never clears local work.
@@ -707,7 +778,7 @@ export function KeywordRankingsPage() {
       const session = await getCurrentSession();
       const supabase = getSupabaseClient();
       if (!session || !supabase || !trackingItems.length) return;
-      await supabase.from('keyword_rank_tracking').upsert(trackingItems.map((item) => ({ id: item.id, asin: item.asin, keyword: item.keyword, country: item.country, product: item.product, campaign: item.campaign, active: item.active, created_at: item.createdAt, last_fetched_at: item.lastFetchedAt ?? null, traffic_score: item.trafficScore ?? null })), { onConflict: 'id' });
+      await supabase.from('keyword_rank_tracking').upsert(trackingItems.map((item) => ({ id: item.id, asin: item.asin, keyword: item.keyword, country: item.country, product: item.product, campaign: item.campaign, active: item.active, created_at: item.createdAt, last_fetched_at: item.lastFetchedAt ?? null, traffic_score: item.trafficScore ?? null, group_id: item.groupId ?? null, role: item.role ?? null })), { onConflict: 'id' });
     })();
   }, [trackingItems, trackingLoaded]);
   useEffect(() => {
@@ -753,26 +824,6 @@ export function KeywordRankingsPage() {
   const latestRank = (row: RankLookupRow, position: string) => {
     const point = [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0];
     return point?.displayPositions.find((item) => item.displayPosition.toLowerCase() === position)?.totalRank ?? null;
-  };
-  const addTracking = () => {
-    if (!/^[A-Z0-9]{10}$/i.test(ownAsin.trim())) { message.warning('请先输入有效的我方 ASIN（10 位）'); return; }
-    if (!selectedKeywords.length) { message.warning('请先勾选需要追踪的关键词'); return; }
-    const choicesByKeyword = new Map(keywordChoices.map((choice) => [choice.keyword, choice]));
-    const now = new Date().toISOString();
-    setTrackingItems((current) => {
-      const next = [...current];
-      for (const keyword of selectedKeywords) {
-        const exists = next.some((item) => item.asin === ownAsin.trim() && item.keyword === keyword && item.country === country);
-        if (!exists) {
-          const choice = choicesByKeyword.get(keyword);
-          next.push({ id: crypto.randomUUID(), asin: ownAsin.trim(), keyword, country, product: choice?.product ?? null, campaign: choice?.campaign ?? null, active: true, createdAt: now });
-        }
-      }
-      return next;
-    });
-    saveKeywordsForAsin(ownAsin, selectedKeywords);
-    void runLookup();
-    message.success(`已加入 ${selectedKeywords.length} 个关键词的每小时追踪`);
   };
   const stopTracking = (id: string) => {
     setTrackingItems((current) => current.map((item) => item.id === id ? { ...item, active: false } : item));
@@ -897,7 +948,7 @@ export function KeywordRankingsPage() {
       {trafficKeywordError && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={trafficKeywordError} />}
       {!!trafficKeywordRows.length && <div className="traffic-summary-strip asin-traffic-entry"><span><b>{trafficAsin.trim()}</b></span><span>{trafficCountry} 站</span><span><b>{trafficKeywordTotal}</b> 个流量词</span><span>TOP 流量词：<b>{topTrafficKeyword?.searchTerm ?? '—'}</b></span><Button type="link" onClick={() => navigate(`/asin-traffic-keywords?asin=${encodeURIComponent(trafficAsin.trim())}&country=${encodeURIComponent(trafficCountry)}`)}>点击 ASIN 查看完整分析 →</Button></div>}
     </Card>
-    <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button onClick={addTracking}>加入每小时追踪</Button><Button loading={loading} onClick={() => void runDailyLookup()}>抓取每日排名</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>读取西柚排名快照</Button></Space>}>
+    <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button loading={loading} onClick={() => void runDailyLookup()}>抓取每日排名</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>读取西柚排名快照</Button></Space>}>
       <Input.Search value={manualKeywordInput} onChange={(event) => setManualKeywordInput(event.target.value)} onSearch={addManualKeywords} enterButton="添加关键词" placeholder="直接输入关键词；可用逗号或换行一次添加多个" style={{ maxWidth: 560, marginBottom: 16 }} />
       <Table<RankKeywordChoice> rowKey="key" size="small" dataSource={keywordChoices} rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }} pagination={tablePagination(20)} scroll={{ x: 1200 }} columns={[
         { title: '投放关键词', dataIndex: 'keyword', fixed: 'left', width: 240 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '店铺', dataIndex: 'store', width: 100 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', width: 240, ellipsis: true }, { title: '匹配类型', dataIndex: 'matchType', width: 120 },
