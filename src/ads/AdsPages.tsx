@@ -702,8 +702,8 @@ export function KeywordRankingsPage() {
       });
       if (error) throw error;
       setRankRows(data?.results ?? []);
-      message.success('小时排名已更新');
-    } catch (error) { message.error(error instanceof Error ? error.message : '小时排名抓取失败'); }
+      message.success('已读取西柚已抓取的排名快照');
+    } catch (error) { message.error(error instanceof Error ? error.message : '西柚排名快照读取失败'); }
     finally { setLoading(false); }
   };
   const runDailyLookup = async () => {
@@ -817,19 +817,19 @@ export function KeywordRankingsPage() {
         { title: '操作', fixed: 'right', width: 110, render: (_, row) => <Button type="link" size="small" onClick={() => addTrafficKeywordToLibrary(row.searchTerm)}>加入库</Button> },
       ]} />
     </Card>
-    <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button onClick={addTracking}>加入每小时追踪</Button><Button loading={loading} onClick={() => void runDailyLookup()}>抓取每日排名</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>抓取小时排名</Button></Space>}>
+    <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button onClick={addTracking}>加入每小时追踪</Button><Button loading={loading} onClick={() => void runDailyLookup()}>抓取每日排名</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>读取西柚排名快照</Button></Space>}>
       <Input.Search value={manualKeywordInput} onChange={(event) => setManualKeywordInput(event.target.value)} onSearch={addManualKeywords} enterButton="添加关键词" placeholder="直接输入关键词；可用逗号或换行一次添加多个" style={{ maxWidth: 560, marginBottom: 16 }} />
       <Table<RankKeywordChoice> rowKey="key" size="small" dataSource={keywordChoices} rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }} pagination={tablePagination(20)} scroll={{ x: 1200 }} columns={[
         { title: '投放关键词', dataIndex: 'keyword', fixed: 'left', width: 240 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '店铺', dataIndex: 'store', width: 100 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', width: 240, ellipsis: true }, { title: '匹配类型', dataIndex: 'matchType', width: 120 },
       ]} />
     </Card>
     <Card style={{ marginTop: 16 }} title="每小时追踪任务" extra={<Tag color="blue">运行中 {trackingItems.filter((item) => item.active).length} 个</Tag>}>
-      <Alert type="info" showIcon style={{ marginBottom: 16 }} message="追踪中的关键词会在本系统保持打开时每小时自动更新；停止后不会再新增排名记录。流量分由西柚返回的关键词流量字段自动标注。" />
+      <Alert type="info" showIcon style={{ marginBottom: 16 }} message="追踪中的关键词会在本系统保持打开时每小时重新读取西柚最新排名快照；停止后不会再新增排名记录。流量分由西柚返回的关键词流量字段自动标注。" />
       <Table<RankTrackingItem> rowKey="id" size="small" dataSource={trackingItems} pagination={tablePagination(10)} scroll={{ x: 1200 }} columns={[
         { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '站点', dataIndex: 'country', width: 90 }, { title: '流量分', width: 110, render: (_, row) => row.trafficScore === null || row.trafficScore === undefined ? '待抓取' : row.trafficScore.toFixed(2) }, { title: '状态', width: 100, render: (_, row) => <Tag color={row.active ? 'success' : 'default'}>{row.active ? '追踪中' : '已停止'}</Tag> }, { title: '操作', width: 190, render: (_, row) => row.active ? <Space><Button size="small" loading={loading} onClick={() => void fetchTrackedItem(row)}>立即抓取</Button><Button danger size="small" onClick={() => stopTracking(row.id)}>停止抓取</Button></Space> : <Button size="small" loading={loading} onClick={() => void fetchTrackedItem(row)}>立即抓取</Button> },
       ]} />
     </Card>
-    <Card style={{ marginTop: 16 }} title="小时排名结果" extra={<Text type="secondary">自然排名为 OR，SP 广告排名为 SP</Text>}>
+    <Card style={{ marginTop: 16 }} title="小时排名结果（西柚快照）" extra={<Text type="secondary">直接读取西柚已抓取数据；自然排名为 OR，SP 广告排名为 SP</Text>}>
       <Table<RankLookupRow> rowKey={(row) => `${row.keyword}:${row.asin}`} size="small" dataSource={rankRows} pagination={tablePagination(20)} scroll={{ x: 1000 }} columns={[
         { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新抓取时间', width: 200, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '流量分', width: 110, render: (_, row) => trafficScore(row)?.toFixed(2) ?? '未返回' }, { title: '状态', width: 260, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取小时数据</Tag> },
       ]} />

@@ -94,6 +94,75 @@ Deno.serve(async (request) => {
       throw new Error("Each ASIN must contain 10 letters or digits");
     }
 
+    // The hourly endpoint cannot create historical data on demand.  For the
+    // hourly view we therefore use XiYou's already captured ASIN traffic-word
+    // snapshots.  This makes the result deterministic and avoids presenting a
+    // temporary "hourly data unavailable" error as a ranking failure.
+    if (mode === "hourly") {
+      const snapshots = await Promise.all(asins.map(async (asin) => {
+        try {
+          const result = await callXiyou(token, "get_asin_keywords", {
+            asin,
+            country: body.country,
+            page: 1,
+            page_size: 10000,
+            sort_field: "traffic",
+            sort_order: "desc",
+            user_task: "Retrieve XiYou's already captured traffic keyword ranking snapshots for this ASIN.",
+            intent_summary: "Return captured organic and sponsored ranking snapshots without generating a new hourly ranking query.",
+          });
+          const response = result.data ?? result;
+          if (response?.error || Number(response?.status) >= 400) {
+            return { asin, list: [], error: response?.message ?? "XiYou returned no captured keyword snapshot" };
+          }
+          return { asin, list: Array.isArray(response?.list) ? response.list : [] };
+        } catch (error) {
+          return { asin, list: [], error: error instanceof Error ? error.message : "Unable to read XiYou keyword snapshot" };
+        }
+      }));
+
+      const normalizePosition = (value: unknown) => {
+        const position = String(value ?? "").trim();
+        const lower = position.toLowerCase();
+        if (lower === "or" || lower.includes("organic") || position.includes("自然")) return "OR";
+        if (lower === "sp" || lower.includes("sponsored") || lower.includes("ad") || position.includes("广告")) return "SP";
+        return position || "未出现";
+      };
+      const results = snapshots.flatMap(({ asin, list, error }) => keywords.map((keyword) => {
+        if (error) return { asin, keyword, trends: [], error };
+        const item = list.find((candidate: Record<string, unknown>) =>
+          String(candidate.searchTerm ?? candidate.keyword ?? "").trim().toLocaleLowerCase() === keyword.trim().toLocaleLowerCase(),
+        ) as Record<string, unknown> | undefined;
+        if (!item) {
+          return {
+            asin,
+            keyword,
+            trends: [],
+            error: "该关键词未收录在西柚已抓取的 ASIN 流量词快照中",
+          };
+        }
+        const ranks = Array.isArray(item.ranks) ? item.ranks as Record<string, unknown>[] : [];
+        const capturedAt = String(ranks.find((rank) => rank.rankTime)?.rankTime ?? item.updatedAt ?? systemDate);
+        return {
+          asin,
+          keyword,
+          trends: [{
+            date: capturedAt,
+            displayPositions: ranks.map((rank) => ({
+              displayPosition: normalizePosition(rank.position),
+              page: typeof rank.page === "number" ? rank.page : null,
+              pageRank: typeof rank.pageRank === "number" ? rank.pageRank : undefined,
+              totalRank: typeof rank.totalRank === "number" ? rank.totalRank : undefined,
+            })),
+            trafficScore: (item.trafficAcquisitionRate as Record<string, unknown> | undefined)?.total
+              ?? (item.traffic as Record<string, unknown> | undefined)?.total
+              ?? null,
+          }],
+        };
+      }));
+      return Response.json({ results, source: "xiyou-captured-snapshot" }, { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const results = await Promise.all(asins.flatMap((asin) => keywords.map(async (keyword) => {
       try {
         const result = await callXiyou(token, "get_asin_keyword_rank_hourly", mode === "daily" ? {
