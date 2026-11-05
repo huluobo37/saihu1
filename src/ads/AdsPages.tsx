@@ -989,7 +989,7 @@ export function KeywordRankingsPage() {
 }
 
 export function CampaignKeywordRankingsPage() {
-  const { records } = useAds();
+  const { records, filters } = useAds();
   const { message } = App.useApp();
   const [campaign, setCampaign] = useState('');
   const [ownAsin, setOwnAsin] = useState('');
@@ -1023,6 +1023,13 @@ export function CampaignKeywordRankingsPage() {
     const allowed = new Set(choices.map((choice) => choice.key));
     setSelectedKeys((current) => current.filter((key) => allowed.has(String(key))));
   }, [campaign, records.length]);
+
+  // Reuse the campaign selected in the shared top filter. This prevents the
+  // ranking module from showing an empty list while the page header already
+  // has a campaign selected.
+  useEffect(() => {
+    if (filters.campaign && filters.campaign !== campaign) setCampaign(filters.campaign);
+  }, [filters.campaign]);
 
   const run = async () => {
     if (!campaign) { message.warning('请先选择一个广告活动'); return; }
