@@ -595,6 +595,8 @@ export function KeywordRankingsPage() {
   const [competitorAsins, setCompetitorAsins] = useState('');
   const [country, setCountry] = useState('US');
   const [rankDate, setRankDate] = useState<Dayjs>(dayjs());
+  const [trafficAsin, setTrafficAsin] = useState('');
+  const [trafficCountry, setTrafficCountry] = useState('US');
   const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
   const [manualKeywordInput, setManualKeywordInput] = useState('');
   const [manualKeywords, setManualKeywords] = useState<string[]>([]);
@@ -768,11 +770,11 @@ export function KeywordRankingsPage() {
     } catch (error) { message.error(error instanceof Error ? error.message : '抓取失败'); } finally { setLoading(false); }
   };
   const runTrafficKeywordLookup = async () => {
-    if (!/^[A-Z0-9]{10}$/i.test(ownAsin.trim())) { message.warning('请先输入有效的 ASIN（10 位）'); return; }
+    if (!/^[A-Z0-9]{10}$/i.test(trafficAsin.trim())) { message.warning('请先输入有效的 ASIN（10 位）'); return; }
     const supabase = getSupabaseClient(); if (!supabase) { message.error('请先配置 Supabase'); return; }
     setTrafficLoading(true); setTrafficKeywordError(null);
     try {
-      const { data, error } = await supabase.functions.invoke<{ trafficKeywords: AsinTrafficKeyword[]; total: number; error?: string }>('xiyou-ranks', { body: { operation: 'asin_keywords', ownAsin: ownAsin.trim(), country, date: dayjs().format('YYYY-MM-DD'), keywords: [] } });
+      const { data, error } = await supabase.functions.invoke<{ trafficKeywords: AsinTrafficKeyword[]; total: number; error?: string }>('xiyou-ranks', { body: { operation: 'asin_keywords', ownAsin: trafficAsin.trim(), country: trafficCountry, date: dayjs().format('YYYY-MM-DD'), keywords: [] } });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       setTrafficKeywordRows(data?.trafficKeywords ?? []); setTrafficKeywordTotal(data?.total ?? 0);
@@ -819,7 +821,7 @@ export function KeywordRankingsPage() {
         <Col xs={24} md={6}><Button onClick={() => saveKeywordsForAsin(ownAsin, selectedKeywords)} disabled={!selectedKeywords.length}>保存已选关键词</Button></Col>
       </Row>
     </Card>
-    <Card style={{ marginTop: 16 }} title="分析对象设置">
+    <Card style={{ marginTop: 16 }} title="ASIN 关键词排名设置" extra={<Text type="secondary">独立模块：用于关键词排名、竞品对比与排名追踪</Text>}>
       <Row gutter={[12, 12]}>
         <Col xs={24} md={8}><Text strong>我方 ASIN</Text><Input value={ownAsin} onChange={(event) => setOwnAsin(event.target.value.toUpperCase())} placeholder="输入我方产品 ASIN" style={{ marginTop: 6 }} /></Col>
         <Col xs={24} md={8}><Text strong>竞品 ASIN（可选）</Text><Input value={competitorAsins} onChange={(event) => setCompetitorAsins(event.target.value.toUpperCase())} placeholder="多个 ASIN 用逗号隔开" style={{ marginTop: 6 }} /></Col>
@@ -829,9 +831,13 @@ export function KeywordRankingsPage() {
       <Alert type="info" showIcon style={{ marginTop: 16 }} message="可先使用上方筛选器选定广告活动并勾选投放关键词；也可直接在下方手动添加关键词。系统不会默认分析全部关键词。" />
     </Card>
     <Card className="sif-traffic-lookup" style={{ marginTop: 16 }} title="ASIN 流量词查询" extra={<Button type="primary" loading={trafficLoading} onClick={() => void runTrafficKeywordLookup()}>查询西柚流量词</Button>}>
-      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="使用上方的 ASIN 和站点查询西柚近 7 天流量词，按总流量降序展示。" />
+      <Row gutter={[12, 12]} style={{ marginBottom: 14 }}>
+        <Col xs={24} md={15}><Text strong>查询 ASIN</Text><Input value={trafficAsin} onChange={(event) => { setTrafficAsin(event.target.value.toUpperCase()); setTrafficKeywordRows([]); setTrafficKeywordTotal(0); }} placeholder="输入需要查询流量词的 ASIN" style={{ marginTop: 6 }} /></Col>
+        <Col xs={24} md={9}><Text strong>查询站点</Text><Select value={trafficCountry} onChange={(value) => { setTrafficCountry(value); setTrafficKeywordRows([]); setTrafficKeywordTotal(0); }} options={[{ value: 'US', label: '美国站' }, { value: 'CA', label: '加拿大站' }, { value: 'UK', label: '英国站' }, { value: 'DE', label: '德国站' }]} style={{ width: '100%', marginTop: 6 }} /></Col>
+      </Row>
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="此模块与关键词排名设置相互独立。输入 ASIN 和站点后，查询西柚近 7 天流量词。" />
       {trafficKeywordError && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={trafficKeywordError} />}
-      {!!trafficKeywordRows.length && <div className="traffic-summary-strip asin-traffic-entry"><span><b>{ownAsin.trim()}</b></span><span>{country} 站</span><span><b>{trafficKeywordTotal}</b> 个流量词</span><span>TOP 流量词：<b>{topTrafficKeyword?.searchTerm ?? '—'}</b></span><Button type="link" onClick={() => navigate(`/asin-traffic-keywords?asin=${encodeURIComponent(ownAsin.trim())}&country=${encodeURIComponent(country)}`)}>点击 ASIN 查看完整分析 →</Button></div>}
+      {!!trafficKeywordRows.length && <div className="traffic-summary-strip asin-traffic-entry"><span><b>{trafficAsin.trim()}</b></span><span>{trafficCountry} 站</span><span><b>{trafficKeywordTotal}</b> 个流量词</span><span>TOP 流量词：<b>{topTrafficKeyword?.searchTerm ?? '—'}</b></span><Button type="link" onClick={() => navigate(`/asin-traffic-keywords?asin=${encodeURIComponent(trafficAsin.trim())}&country=${encodeURIComponent(trafficCountry)}`)}>点击 ASIN 查看完整分析 →</Button></div>}
     </Card>
     <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button onClick={addTracking}>加入每小时追踪</Button><Button loading={loading} onClick={() => void runDailyLookup()}>抓取每日排名</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>读取西柚排名快照</Button></Space>}>
       <Input.Search value={manualKeywordInput} onChange={(event) => setManualKeywordInput(event.target.value)} onSearch={addManualKeywords} enterButton="添加关键词" placeholder="直接输入关键词；可用逗号或换行一次添加多个" style={{ maxWidth: 560, marginBottom: 16 }} />
