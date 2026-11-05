@@ -776,7 +776,7 @@ export function KeywordRankingsPage() {
     return () => window.clearInterval(timer);
   }, [trackingItems]);
 
-  return <>
+  return <div className="sif-rank-page">
     <PageTitle title="关键词排名分析" subtitle="按广告活动勾选本次关键词，抓取我方与竞品 ASIN 的小时自然排名和 SP 广告排名" />
     <DataScope reportTypes={['adGroup']} />
     <Card style={{ marginTop: 16 }} title="ASIN 关键词库" extra={<Text type="secondary">新增关键词会自动按 ASIN 保存，可跨刷新和设备调用</Text>}>
@@ -832,7 +832,7 @@ export function KeywordRankingsPage() {
         { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '最新日期', width: 180, render: (_, row) => [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0]?.date ?? '—' }, { title: '自然排名（OR）', width: 150, render: (_, row) => latestRank(row, 'or') ?? '未出现' }, { title: 'SP 广告排名', width: 150, render: (_, row) => latestRank(row, 'sp') ?? '未出现' }, { title: '状态', width: 300, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取每日数据</Tag> }, { title: '趋势图', width: 110, render: (_, row) => row.error ? '—' : <Button size="small" onClick={() => Modal.info({ title: `${row.keyword} · ${row.asin} 每日排名趋势`, width: 860, content: <DailyRankChart row={row} /> })}>查看折线图</Button> },
       ]} />
     </Card>
-  </>;
+  </div>;
 }
 
 export function SearchTermsPage() {

@@ -170,3 +170,91 @@ th {
   }
 
 }
+
+/* SIF-inspired operations console: compact control bands, green actions and
+   quietly bordered white data surfaces. This is a visual pattern only; the
+   app keeps its own branding and never copies SIF assets or campaign content. */
+.sif-app-header {
+  background: linear-gradient(90deg, #fff 0%, #fcfffd 100%) !important;
+  box-shadow: 0 2px 10px rgb(22 101 52 / 5%);
+}
+
+.sif-brand {
+  background: linear-gradient(180deg, #fff 0%, #fbfefc 100%);
+}
+
+.app-sider .ant-menu-item-selected {
+  background: #eaf8ef !important;
+  color: #079746 !important;
+  font-weight: 600;
+}
+
+.app-sider .ant-menu-item-selected::after { border-inline-end-color: #07a94d !important; }
+
+.sif-rank-page {
+  position: relative;
+}
+
+.sif-rank-page::before {
+  content: 'RANKING INTELLIGENCE  ·  ASIN / KEYWORD WORKBENCH';
+  display: block;
+  margin-bottom: 16px;
+  padding: 9px 16px;
+  color: #0b8f48;
+  background: linear-gradient(90deg, #effaf3 0%, #fff 72%);
+  border: 1px solid #d8efe1;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+.sif-rank-page .ant-card {
+  border-color: #e7ece8;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px rgb(26 83 48 / 5%);
+}
+
+.sif-rank-page .ant-card-head {
+  min-height: 48px;
+  background: linear-gradient(90deg, #f8fcf9 0%, #fff 56%);
+  border-bottom-color: #e9efeb;
+}
+
+.sif-rank-page .ant-card-head-title {
+  color: #163b24;
+  font-weight: 650;
+}
+
+.sif-rank-page .ant-btn-primary {
+  border-color: #08a84e;
+  background: #08a84e;
+  box-shadow: none;
+}
+
+.sif-rank-page .ant-btn-primary:hover {
+  border-color: #087f3e !important;
+  background: #087f3e !important;
+}
+
+.sif-rank-page .ant-table-thead > tr > th {
+  background: #f3f7f4;
+  color: #365043;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.sif-rank-page .ant-table-tbody > tr:hover > td { background: #f7fcf8 !important; }
+
+.sif-rank-page .ant-input,
+.sif-rank-page .ant-picker,
+.sif-rank-page .ant-select-selector {
+  border-color: #d7e4db !important;
+}
+
+.sif-rank-page .ant-input:focus,
+.sif-rank-page .ant-picker-focused,
+.sif-rank-page .ant-select-focused .ant-select-selector {
+  border-color: #0aa64e !important;
+  box-shadow: 0 0 0 2px rgb(10 166 78 / 12%) !important;
+}

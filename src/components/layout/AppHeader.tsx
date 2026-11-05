@@ -105,6 +105,7 @@ export function AppHeader({ onOpenPalette }: { onOpenPalette: () => void }) {
 
   return (
     <Header
+      className="sif-app-header"
       style={{
         position: 'sticky',
         top: 0,
