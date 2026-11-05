@@ -746,6 +746,13 @@ export function KeywordRankingsPage() {
       setTrafficKeywordRows(data?.trafficKeywords ?? []); setTrafficKeywordTotal(data?.total ?? 0);
     } catch (error) { const reason = error instanceof Error ? error.message : '流量词查询失败'; setTrafficKeywordError(reason); message.error(reason); } finally { setTrafficLoading(false); }
   };
+  const trafficTotal = trafficKeywordRows.reduce((sum, row) => sum + (row.traffic?.total ?? 0), 0);
+  const topTrafficKeyword = [...trafficKeywordRows].sort((a, b) => (b.traffic?.total ?? 0) - (a.traffic?.total ?? 0))[0];
+  const addTrafficKeywordToLibrary = (keyword: string) => {
+    saveKeywordsForAsin(ownAsin, [keyword]);
+    setManualKeywords((current) => [...new Set([...current, keyword])]);
+    message.success(`已将 “${keyword}” 加入当前 ASIN 关键词库`);
+  };
 
   useEffect(() => {
     const activeItems = trackingItems.filter((item) => item.active);
@@ -795,19 +802,19 @@ export function KeywordRankingsPage() {
       </Row>
       <Alert type="info" showIcon style={{ marginTop: 16 }} message="可先使用上方筛选器选定广告活动并勾选投放关键词；也可直接在下方手动添加关键词。系统不会默认分析全部关键词。" />
     </Card>
-    <Card style={{ marginTop: 16 }} title="ASIN 流量词查询" extra={<Button type="primary" loading={trafficLoading} onClick={() => void runTrafficKeywordLookup()}>查询西柚流量词</Button>}>
+    <Card className="sif-traffic-lookup" style={{ marginTop: 16 }} title="ASIN 流量词查询" extra={<Button type="primary" loading={trafficLoading} onClick={() => void runTrafficKeywordLookup()}>查询西柚流量词</Button>}>
       <Alert type="info" showIcon style={{ marginBottom: 12 }} message="使用上方的 ASIN 和站点查询西柚近 7 天流量词，按总流量降序展示。" />
       {trafficKeywordError && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={trafficKeywordError} />}
-      <Table<AsinTrafficKeyword> rowKey={(row) => row.searchTerm} size="small" dataSource={trafficKeywordRows} pagination={tablePagination(20)} scroll={{ x: 1150 }} title={() => <Text type="secondary">共 {trafficKeywordTotal} 个流量词</Text>} columns={[
-        { title: '流量词', dataIndex: 'searchTerm', fixed: 'left', width: 260 },
-        { title: '自然排名（OR）', width: 140, render: (_, row) => row.ranks?.find((rank) => rank.position?.toLowerCase() === 'or')?.totalRank ?? '未出现' },
-        { title: 'SP 广告排名', width: 140, render: (_, row) => row.ranks?.find((rank) => rank.position?.toLowerCase() === 'sp')?.totalRank ?? '未出现' },
-        { title: '总流量', width: 110, render: (_, row) => integer(row.traffic?.total ?? null) },
-        { title: '自然流量', width: 110, render: (_, row) => integer(row.traffic?.organic ?? null) },
-        { title: '广告流量', width: 110, render: (_, row) => integer(row.traffic?.advertising ?? null) },
-        { title: '总获流率', width: 120, render: (_, row) => percent(row.trafficAcquisitionRate?.total ?? null) },
-        { title: '自然获流率', width: 120, render: (_, row) => percent(row.trafficAcquisitionRate?.organic ?? null) },
-        { title: '广告获流率', width: 120, render: (_, row) => percent(row.trafficAcquisitionRate?.advertising ?? null) },
+      {!!trafficKeywordRows.length && <div className="traffic-summary-strip"><span><b>{trafficKeywordTotal}</b> 个流量词</span><span><b>{integer(trafficTotal)}</b> 近 7 天总流量</span><span>TOP 流量词：<b>{topTrafficKeyword?.searchTerm ?? '—'}</b></span><span>点击“加入库”可立即用于排名监控</span></div>}
+      <Table<AsinTrafficKeyword> rowKey={(row) => row.searchTerm} size="small" className="traffic-keyword-table" dataSource={trafficKeywordRows} pagination={tablePagination(20)} scroll={{ x: 1340 }} columns={[
+        { title: '#', width: 58, render: (_, __, index) => <Text type="secondary">{index + 1}</Text> },
+        { title: '流量词', dataIndex: 'searchTerm', fixed: 'left', width: 260, render: (value: string, row) => <div className="traffic-word"><b>{value}</b><div><Tag color={(row.traffic?.organic ?? 0) >= (row.traffic?.advertising ?? 0) ? 'green' : 'orange'}>{(row.traffic?.organic ?? 0) >= (row.traffic?.advertising ?? 0) ? '自然主导' : '广告主导'}</Tag><Text type="secondary">近 7 天</Text></div></div> },
+        { title: '流量占比 / 总流量', width: 190, render: (_, row) => { const total = row.traffic?.total ?? 0; const share = trafficTotal ? total / trafficTotal : 0; return <div className="traffic-share"><b>{percent(share)}</b><span>{integer(total)}</span><i><em style={{ width: `${Math.min(100, share * 100)}%` }} /></i></div>; } },
+        { title: '自然排名（OR）', width: 150, render: (_, row) => { const rank = row.ranks?.find((value) => value.position?.toLowerCase() === 'or')?.totalRank; return <span className="rank-badge rank-organic">{rank ? `#${rank}` : '未出现'}</span>; } },
+        { title: 'SP 广告排名', width: 150, render: (_, row) => { const rank = row.ranks?.find((value) => value.position?.toLowerCase() === 'sp')?.totalRank; return <span className="rank-badge rank-sponsored">{rank ? `#${rank}` : '未出现'}</span>; } },
+        { title: '获流结构', width: 215, render: (_, row) => { const organic = row.traffic?.organic ?? 0; const advertising = row.traffic?.advertising ?? 0; const total = organic + advertising; const organicRate = total ? (organic / total) * 100 : 0; return <div className="traffic-mix"><div><span>自然 {integer(organic)}</span><span>广告 {integer(advertising)}</span></div><i><em style={{ width: `${organicRate}%` }} /></i></div>; } },
+        { title: '获流率', width: 200, render: (_, row) => <div className="acquisition-rates"><span>总 <b>{percent(row.trafficAcquisitionRate?.total ?? null)}</b></span><span>自然 {percent(row.trafficAcquisitionRate?.organic ?? null)}</span><span>广告 {percent(row.trafficAcquisitionRate?.advertising ?? null)}</span></div> },
+        { title: '操作', fixed: 'right', width: 110, render: (_, row) => <Button type="link" size="small" onClick={() => addTrafficKeywordToLibrary(row.searchTerm)}>加入库</Button> },
       ]} />
     </Card>
     <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button onClick={addTracking}>加入每小时追踪</Button><Button loading={loading} onClick={() => void runDailyLookup()}>抓取每日排名</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>抓取小时排名</Button></Space>}>

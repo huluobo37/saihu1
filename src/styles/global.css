@@ -258,3 +258,52 @@ th {
   border-color: #0aa64e !important;
   box-shadow: 0 0 0 2px rgb(10 166 78 / 12%) !important;
 }
+
+.sif-traffic-lookup .ant-card-body { padding: 14px 16px 16px; }
+
+.traffic-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #f7fbf8;
+  border: 1px solid #e1eee5;
+  color: #5d7062;
+  font-size: 12px;
+}
+
+.traffic-summary-strip span { padding: 0 18px; border-right: 1px solid #e0e9e3; }
+.traffic-summary-strip span:first-child { padding-left: 0; }
+.traffic-summary-strip span:last-child { border-right: 0; }
+.traffic-summary-strip b { color: #078a42; font-weight: 700; }
+
+.traffic-keyword-table .ant-table-tbody > tr > td { padding-top: 13px; padding-bottom: 13px; }
+.traffic-word { display: grid; gap: 6px; }
+.traffic-word > b { color: #20372a; font-weight: 650; }
+.traffic-word .ant-tag { margin-inline-end: 7px; }
+.traffic-word .ant-typography { font-size: 11px; }
+
+.traffic-share { display: grid; grid-template-columns: 50px 1fr; gap: 4px 8px; align-items: center; }
+.traffic-share b { color: #087f3e; font-size: 13px; }
+.traffic-share span { color: #758179; font-size: 12px; }
+.traffic-share i, .traffic-mix i { grid-column: 1 / -1; display: block; height: 5px; overflow: hidden; background: #e4ece6; border-radius: 99px; }
+.traffic-share em { display: block; height: 100%; min-width: 3px; background: linear-gradient(90deg, #05a94a, #48c575); border-radius: inherit; }
+
+.rank-badge { display: inline-flex; min-width: 68px; justify-content: center; padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 650; }
+.rank-organic { color: #047c3b; background: #ebf9ef; border: 1px solid #78d69c; }
+.rank-sponsored { color: #c26b00; background: #fff7e8; border: 1px solid #f0c270; }
+
+.traffic-mix { display: grid; gap: 7px; }
+.traffic-mix > div { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #65736a; }
+.traffic-mix > div span:first-child { color: #078a42; }
+.traffic-mix i { background: #ffead1; }
+.traffic-mix em { display: block; height: 100%; background: #0aad4f; border-radius: inherit; }
+
+.acquisition-rates { display: grid; grid-template-columns: repeat(3, auto); gap: 8px; font-size: 11px; color: #748078; }
+.acquisition-rates b { color: #087f3e; }
+
+@media (max-width: 720px) {
+  .traffic-summary-strip { display: grid; gap: 8px; }
+  .traffic-summary-strip span, .traffic-summary-strip span:first-child { padding: 0; border: 0; }
+}
