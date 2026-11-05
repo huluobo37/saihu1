@@ -11,7 +11,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useState, type Key, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import {
-  Bar, BarChart, CartesianGrid, LabelList, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, Brush, CartesianGrid, LabelList, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import * as XLSX from 'xlsx';
 
@@ -529,6 +529,8 @@ const RANK_HISTORY_SETTING = 'keyword-rank-history:v1';
 const RANK_MONITOR_DRAFT_SETTING = 'keyword-rank-monitor-draft:v1';
 const RANK_ANALYSIS_DRAFT_SETTING = 'keyword-rank-analysis-draft:v1';
 const ASIN_KEYWORD_LIBRARY_SETTING = 'asin-keyword-library:v1';
+const CAMPAIGN_RANK_DRAFT_SETTING = 'campaign-keyword-rank-draft:v1';
+const ASIN_TRAFFIC_DRAFT_SETTING = 'asin-traffic-query-draft:v1';
 
 // XiYou can return an empty object (instead of an empty array) when a keyword
 // has no hourly ranking. Keep the results table resilient to that API shape.
@@ -625,7 +627,8 @@ function AsinHourlyRankChart({ points, asins }: { points: RankHistoryPoint[]; as
   if (!data.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚无小时排名记录；请先抓取今日排名" />;
   return <div style={{ height: 270, minWidth: 520 }}><ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 16, right: 22, left: 2, bottom: 14 }}>
     <CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="time" minTickGap={44} /><YAxis reversed allowDecimals={false} label={{ value: '排名（越小越靠前）', angle: -90, position: 'insideLeft' }} /><Tooltip formatter={(value, name) => [value ?? '未出现', String(name).startsWith('or_') ? `${String(name).slice(3)} 自然排名（OR）` : `${String(name).slice(3)} SP 广告排名`]} /><Legend formatter={(value) => String(value).startsWith('or_') ? `${String(value).slice(3)} OR` : `${String(value).slice(3)} SP`} />
-    {asins.flatMap((asin, index) => [<Line key={`or_${asin}`} type="monotone" dataKey={`or_${asin}`} name={`or_${asin}`} stroke={palette[index % palette.length]} strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} />, <Line key={`sp_${asin}`} type="monotone" dataKey={`sp_${asin}`} name={`sp_${asin}`} stroke={palette[index % palette.length]} strokeDasharray="6 4" strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} />])}
+    {asins.flatMap((asin, index) => [<Line key={`or_${asin}`} type="monotone" dataKey={`or_${asin}`} name={`or_${asin}`} stroke={palette[index % palette.length]} strokeWidth={2.5} connectNulls dot={{ r: 3 }} />, <Line key={`sp_${asin}`} type="monotone" dataKey={`sp_${asin}`} name={`sp_${asin}`} stroke={palette[index % palette.length]} strokeDasharray="6 4" strokeWidth={2.5} connectNulls dot={{ r: 3 }} />])}
+    <Brush dataKey="time" height={22} travellerWidth={10} stroke="#00a870" tickFormatter={(value) => String(value)} />
   </LineChart></ResponsiveContainer></div>;
 }
 
@@ -986,16 +989,93 @@ export function KeywordRankingsPage() {
   </div>;
 }
 
+export function CampaignKeywordRankingsPage() {
+  const { filtered } = useAds();
+  const { message } = App.useApp();
+  const [campaign, setCampaign] = useState('');
+  const [ownAsin, setOwnAsin] = useState('');
+  const [country, setCountry] = useState('US');
+  const [rankDate, setRankDate] = useState<Dayjs>(dayjs());
+  const [selectedKeys, setSelectedKeys] = useState<Key[]>([]);
+  const [results, setResults] = useState<RankLookupRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+
+  useEffect(() => {
+    void getSetting<{ campaign: string; ownAsin: string; country: string; rankDate: string; selectedKeys: string[] }>(CAMPAIGN_RANK_DRAFT_SETTING).then((draft) => {
+      if (draft) { setCampaign(draft.campaign); setOwnAsin(draft.ownAsin); setCountry(draft.country); if (draft.rankDate) setRankDate(dayjs(draft.rankDate)); setSelectedKeys(draft.selectedKeys ?? []); }
+      setDraftLoaded(true);
+    });
+  }, []);
+  useEffect(() => { if (draftLoaded) void setSetting(CAMPAIGN_RANK_DRAFT_SETTING, { campaign, ownAsin, country, rankDate: rankDate.format('YYYY-MM-DD'), selectedKeys: selectedKeys.map(String) }); }, [campaign, ownAsin, country, rankDate, selectedKeys, draftLoaded]);
+
+  const campaignRows = filtered.filter((row) => row.reportType === 'adGroup' && row.campaign && row.target);
+  const campaigns = [...new Set(campaignRows.map((row) => row.campaign!))].sort();
+  const choices: RankKeywordChoice[] = [...new Map(campaignRows.filter((row) => !campaign || row.campaign === campaign).map((row) => {
+    const choice: RankKeywordChoice = { key: `${row.product ?? ''}|${row.store ?? ''}|${row.campaign ?? ''}|${row.adGroup ?? ''}|${row.target ?? ''}`, keyword: row.target!, product: row.product ?? null, store: row.store ?? null, campaign: row.campaign ?? null, adGroup: row.adGroup ?? null, matchType: row.matchType ?? null };
+    return [choice.key, choice] as const;
+  })).values()];
+  const selectedKeywords = choices.filter((choice) => selectedKeys.includes(choice.key)).map((choice) => choice.keyword);
+
+  useEffect(() => {
+    const allowed = new Set(choices.map((choice) => choice.key));
+    setSelectedKeys((current) => current.filter((key) => allowed.has(String(key))));
+  }, [campaign, filtered.length]);
+
+  const run = async () => {
+    if (!campaign) { message.warning('请先选择一个广告活动'); return; }
+    if (!/^[A-Z0-9]{10}$/i.test(ownAsin.trim())) { message.warning('请输入有效的我方 ASIN（10 位）'); return; }
+    if (!selectedKeywords.length) { message.warning('请勾选本次需要分析的投放关键词'); return; }
+    const supabase = getSupabaseClient();
+    if (!supabase) { message.error('请先在系统设置中配置 Supabase'); return; }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ results: RankLookupRow[] }>('xiyou-ranks', {
+        body: { ownAsin: ownAsin.trim(), country, date: rankDate.format('YYYY-MM-DD'), mode: 'daily', keywords: selectedKeywords },
+      });
+      if (error) throw error;
+      setResults(data?.results ?? []);
+      void appendRankHistory(data?.results ?? [], country);
+      message.success(`已读取「${campaign}」的 ${selectedKeywords.length} 个关键词排名`);
+    } catch (error) { message.error(error instanceof Error ? error.message : '广告活动关键词排名读取失败'); }
+    finally { setLoading(false); }
+  };
+
+  return <div className="sif-rank-page">
+    <PageTitle title="广告活动关键词排名" subtitle="选择一个广告活动，只分析该活动投放的关键词；结果与输入条件会自动保存" extra={<Link to="/keyword-rankings"><Button>返回通用关键词排名</Button></Link>} />
+    <DataScope reportTypes={['adGroup']} />
+    <Card style={{ marginTop: 16 }} title="分析设置">
+      <Row gutter={[12, 12]}>
+        <Col xs={24} md={8}><Text strong>广告活动</Text><Select showSearch allowClear value={campaign || undefined} onChange={(value) => { setCampaign(value ?? ''); setResults([]); }} options={campaigns.map((value) => ({ value, label: value }))} placeholder="选择一个广告活动" style={{ width: '100%', marginTop: 6 }} /></Col>
+        <Col xs={24} md={6}><Text strong>我方 ASIN</Text><Input value={ownAsin} onChange={(event) => setOwnAsin(event.target.value.toUpperCase())} placeholder="输入 10 位 ASIN" style={{ marginTop: 6 }} /></Col>
+        <Col xs={12} md={5}><Text strong>站点</Text><Select value={country} onChange={setCountry} options={[{ value: 'US', label: '美国站' }, { value: 'CA', label: '加拿大站' }, { value: 'UK', label: '英国站' }, { value: 'DE', label: '德国站' }]} style={{ width: '100%', marginTop: 6 }} /></Col>
+        <Col xs={12} md={5}><Text strong>抓取日期</Text><DatePicker value={rankDate} onChange={(value) => value && setRankDate(value)} style={{ width: '100%', marginTop: 6 }} /></Col>
+      </Row>
+      <Alert type="info" showIcon style={{ marginTop: 16 }} message="下方只列出所选广告活动中的投放关键词。可多选后读取西柚已抓取的每日排名。" />
+    </Card>
+    <Card style={{ marginTop: 16 }} title={`投放关键词（${choices.length} 个）`} extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button type="primary" loading={loading} onClick={() => void run()}>读取每日排名</Button></Space>}>
+      <Table<RankKeywordChoice> rowKey="key" size="small" dataSource={choices} rowSelection={{ selectedRowKeys: selectedKeys, onChange: setSelectedKeys }} pagination={tablePagination(20)} scroll={{ x: 1100 }} columns={[{ title: '关键词', dataIndex: 'keyword', fixed: 'left', width: 280 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '店铺', dataIndex: 'store', width: 100 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', width: 240, ellipsis: true }, { title: '匹配类型', dataIndex: 'matchType', width: 120 }]} />
+    </Card>
+    <Card style={{ marginTop: 16 }} title="每日排名结果" extra={<Text type="secondary">按关键词查看自然排名与 SP 广告排名趋势</Text>}>
+      <Table<RankLookupRow> rowKey={(row) => `${row.keyword}:${row.asin}`} dataSource={results} loading={loading} pagination={tablePagination(20)} scroll={{ x: 1000 }} columns={[{ title: '关键词', dataIndex: 'keyword', width: 280 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '状态', width: 220, render: (_, row) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取</Tag> }, { title: '趋势图', width: 120, render: (_, row) => row.error ? '—' : <Button size="small" onClick={() => Modal.info({ title: `${row.keyword} · ${row.asin} 每日排名`, width: 900, content: <DailyRankChart row={row} /> })}>查看折线图</Button> }]} />
+    </Card>
+  </div>;
+}
+
 export function AsinTrafficKeywordsPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { message } = App.useApp();
-  const asin = (params.get('asin') ?? '').trim().toUpperCase();
-  const country = params.get('country') ?? 'US';
+  const [asin, setAsin] = useState((params.get('asin') ?? '').trim().toUpperCase());
+  const [country, setCountry] = useState(params.get('country') ?? 'US');
   const [rows, setRows] = useState<AsinTrafficKeyword[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+
+  useEffect(() => { void getSetting<{ asin: string; country: string }>(ASIN_TRAFFIC_DRAFT_SETTING).then((draft) => { if (!asin && draft?.asin) setAsin(draft.asin); if (!params.get('country') && draft?.country) setCountry(draft.country); setDraftLoaded(true); }); }, []);
+  useEffect(() => { if (draftLoaded) void setSetting(ASIN_TRAFFIC_DRAFT_SETTING, { asin, country }); }, [asin, country, draftLoaded]);
 
   const load = async () => {
     if (!/^[A-Z0-9]{10}$/.test(asin)) { setErrorText('ASIN 格式不正确'); return; }
@@ -1015,13 +1095,14 @@ export function AsinTrafficKeywordsPage() {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { void load(); }, [asin, country]);
+  useEffect(() => { if (draftLoaded && asin) void load(); }, [asin, country, draftLoaded]);
   const trafficTotal = rows.reduce((sum, row) => sum + (row.traffic?.total ?? 0), 0);
   const topKeyword = [...rows].sort((a, b) => (b.traffic?.total ?? 0) - (a.traffic?.total ?? 0))[0];
 
   return <div className="sif-rank-page">
     <PageTitle title={`${asin || 'ASIN'} 流量词分析`} subtitle="按 ASIN 单独查看西柚已抓取的流量词、自然排名和 SP 广告排名" extra={<Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/keyword-rankings')}>返回关键词排名分析</Button>} />
-    <Card className="sif-traffic-lookup" style={{ marginTop: 16 }} title="ASIN 查询信息" extra={<Button type="primary" loading={loading} onClick={() => void load()}>刷新西柚快照</Button>}>
+    <Card className="sif-traffic-lookup" style={{ marginTop: 16 }} title="ASIN 查询信息" extra={<Space><Button onClick={() => navigate('/asin-traffic-keywords')}>清空查询</Button><Button type="primary" loading={loading} onClick={() => void load()}>刷新西柚快照</Button></Space>}>
+      <Row gutter={[12, 12]} style={{ marginBottom: 14 }}><Col xs={24} md={14}><Text strong>ASIN</Text><Input value={asin} onChange={(event) => setAsin(event.target.value.toUpperCase())} placeholder="输入 10 位 ASIN" style={{ marginTop: 6 }} /></Col><Col xs={24} md={6}><Text strong>站点</Text><Select value={country} onChange={setCountry} options={[{ value: 'US', label: '美国站' }, { value: 'CA', label: '加拿大站' }, { value: 'UK', label: '英国站' }, { value: 'DE', label: '德国站' }]} style={{ width: '100%', marginTop: 6 }} /></Col><Col xs={24} md={4} style={{ display: 'flex', alignItems: 'end' }}><Button type="primary" loading={loading} onClick={() => void load()}>查询</Button></Col></Row>
       <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }} items={[
         { key: 'asin', label: 'ASIN', children: <Text strong>{asin}</Text> },
         { key: 'country', label: '站点', children: country },
