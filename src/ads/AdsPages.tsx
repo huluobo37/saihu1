@@ -405,7 +405,7 @@ function buildSearchTermSummaries(rows: AdsRecord[], campaignKeys: Set<string>, 
 }
 
 /* Legacy draft retained below only to avoid a partial-write parse error.
-interface KeywordMatchRow extends AdsRecord { keyword: string; matchedIn: string }
+interface KeywordMatchRow extends AdsRecord { keyword: string; matchedIn: string; matchStatus: 'matched' | 'not-found' }
 
 export function KeywordLibraryPage() {
   const { filtered } = useAds();
@@ -442,7 +442,7 @@ export function KeywordLibraryPage() {
 
 */
 
-interface KeywordMatchRow extends AdsRecord { keyword: string; matchedIn: string }
+interface KeywordMatchRow extends AdsRecord { keyword: string; matchedIn: string; matchStatus: 'matched' | 'not-found' }
 
 export function KeywordLibraryPage() {
   const { filtered } = useAds();
@@ -469,21 +469,19 @@ export function KeywordLibraryPage() {
     } catch { message.error('\u65e0\u6cd5\u8bfb\u53d6 Excel\uff0c\u8bf7\u786e\u8ba4\u6587\u4ef6\u683c\u5f0f'); }
     return false;
   };
-  const sourceRows = filtered.filter((row) => row.reportType === 'searchTerm' || row.reportType === 'adGroup' || row.reportType === 'campaign');
-  const matches: KeywordMatchRow[] = sourceRows.flatMap((row) => keywords.flatMap((keyword) => {
+  const sourceRows = filtered.filter((row) => row.reportType === 'adGroup' && row.target);
+  const matches: KeywordMatchRow[] = keywords.flatMap((keyword): KeywordMatchRow[] => {
     const normalized = normalize(keyword);
-    const matchedIn = [
-      row.searchTerm && normalize(row.searchTerm).includes(normalized) ? '\u7528\u6237\u641c\u7d22\u8bcd' : null,
-      row.target && normalize(row.target).includes(normalized) ? '\u6295\u653e\u5173\u952e\u8bcd' : null,
-      row.adGroup && normalize(row.adGroup).includes(normalized) ? '\u5e7f\u544a\u7ec4' : null,
-      row.campaign && normalize(row.campaign).includes(normalized) ? '\u5e7f\u544a\u6d3b\u52a8\u540d\u79f0' : null,
-    ].filter(Boolean).join('\u3001');
-    return matchedIn ? [{ ...row, keyword, matchedIn }] : [];
-  }));
+    const matchedRows = sourceRows.filter((row) => normalize(row.target ?? '') === normalized);
+    if (matchedRows.length) return matchedRows.map((row) => ({ ...row, keyword, matchedIn: '投放关键词', matchStatus: 'matched' as const }));
+    const base = sourceRows[0];
+    if (!base) return [];
+    return [{ ...base, id: `unmatched:${normalized}`, keyword, matchedIn: '未查询到', matchStatus: 'not-found' as const, date: null, campaign: null, adGroup: null, target: null, matchType: null, product: null, store: null }];
+  });
 
   return <>
-    <PageTitle title={'\u5173\u952e\u8bcd\u5e93\u8bc6\u522b'} subtitle={'\u4e0a\u4f20\u6216\u8f93\u5165\u5173\u952e\u8bcd\uff0c\u8bc6\u522b\u5b83\u662f\u5426\u5df2\u7528\u4e8e\u6295\u653e\u5173\u952e\u8bcd\u3001\u5e7f\u544a\u7ec4\u3001\u5e7f\u544a\u6d3b\u52a8\u6216\u641c\u7d22\u8bcd\uff0c\u5e76\u53ef\u5feb\u901f\u8df3\u8f6c\u5bf9\u5e94\u5e7f\u544a\u6d3b\u52a8'} />
-    <DataScope reportTypes={['campaign', 'searchTerm', 'adGroup']} />
+    <PageTitle title={'关键词库识别'} subtitle={'按投放关键词查找所属广告活动；完全一致时返回对应广告活动，未投放的关键词返回“未查询到”'} />
+    <DataScope reportTypes={['adGroup']} />
     <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
       <Col xs={24} xl={10}><Card title={'\u5173\u952e\u8bcd\u5e93'}>
         <Upload.Dragger accept=".xlsx" maxCount={1} showUploadList={false} beforeUpload={beforeUpload}>
