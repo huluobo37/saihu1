@@ -526,6 +526,8 @@ interface AsinTrafficKeyword {
 }
 const RANK_TRACKING_SETTING = 'keyword-rank-tracking:v1';
 const RANK_HISTORY_SETTING = 'keyword-rank-history:v1';
+const RANK_MONITOR_DRAFT_SETTING = 'keyword-rank-monitor-draft:v1';
+const RANK_ANALYSIS_DRAFT_SETTING = 'keyword-rank-analysis-draft:v1';
 const ASIN_KEYWORD_LIBRARY_SETTING = 'asin-keyword-library:v1';
 
 // XiYou can return an empty object (instead of an empty array) when a keyword
@@ -553,12 +555,12 @@ function trafficScore(row: RankLookupRow): number | null {
   return null;
 }
 
-async function appendRankHistory(results: RankLookupRow[]) {
+async function appendRankHistory(results: RankLookupRow[], country = 'US') {
   const now = new Date().toISOString();
   const added = results.filter((row) => !row.error).map((row): RankHistoryPoint => {
     const point = [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0];
     const rankFor = (position: string) => point?.displayPositions?.find((item) => item.displayPosition.toLowerCase() === position)?.totalRank ?? null;
-    return { asin: row.asin, keyword: row.keyword, country: 'US', fetchedAt: now, organicRank: rankFor('or'), sponsoredRank: rankFor('sp'), trafficScore: trafficScore(row) };
+    return { asin: row.asin, keyword: row.keyword, country, fetchedAt: point?.date || now, organicRank: rankFor('or'), sponsoredRank: rankFor('sp'), trafficScore: trafficScore(row) };
   });
   if (!added.length) return;
   const existing = await getSetting<RankHistoryPoint[]>(RANK_HISTORY_SETTING) ?? [];
@@ -653,7 +655,9 @@ export function AsinHourlyRankMonitorPage() {
   const [keywordInput, setKeywordInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [fetching, setFetching] = useState(false);
-  useEffect(() => { void Promise.all([getSetting<RankTrackingItem[]>(RANK_TRACKING_SETTING), getSetting<RankHistoryPoint[]>(RANK_HISTORY_SETTING)]).then(([savedItems, savedHistory]) => { setItems(savedItems ?? []); setHistory(savedHistory ?? []); }); }, []);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  useEffect(() => { void Promise.all([getSetting<RankTrackingItem[]>(RANK_TRACKING_SETTING), getSetting<RankHistoryPoint[]>(RANK_HISTORY_SETTING), getSetting<{ asin: string; product: string; country: string; competitors: string; keywords: string }>(RANK_MONITOR_DRAFT_SETTING)]).then(([savedItems, savedHistory, draft]) => { setItems(savedItems ?? []); setHistory(savedHistory ?? []); if (draft) { setAsinInput(draft.asin); setProductInput(draft.product); setCountryInput(draft.country); setCompetitorInput(draft.competitors); setKeywordInput(draft.keywords); } setDraftLoaded(true); }); }, []);
+  useEffect(() => { if (draftLoaded) void setSetting(RANK_MONITOR_DRAFT_SETTING, { asin: asinInput, product: productInput, country: countryInput, competitors: competitorInput, keywords: keywordInput }); }, [asinInput, productInput, countryInput, competitorInput, keywordInput, draftLoaded]);
   const addMonitoring = async () => {
     const asin = asinInput.trim().toUpperCase();
     const keywords = [...new Set(keywordInput.split(/[\n,，]/).map((value) => value.trim()).filter(Boolean))];
@@ -737,6 +741,15 @@ export function KeywordRankingsPage() {
   const [trafficKeywordTotal, setTrafficKeywordTotal] = useState(0);
   const [trafficKeywordError, setTrafficKeywordError] = useState<string | null>(null);
   const [trafficLoading, setTrafficLoading] = useState(false);
+  const [rankDraftLoaded, setRankDraftLoaded] = useState(false);
+
+  useEffect(() => {
+    void getSetting<{ ownAsin: string; competitorAsins: string; country: string; rankDate: string; trafficAsin: string; trafficCountry: string }>(RANK_ANALYSIS_DRAFT_SETTING).then((draft) => {
+      if (draft) { setOwnAsin(draft.ownAsin); setCompetitorAsins(draft.competitorAsins); setCountry(draft.country); if (draft.rankDate) setRankDate(dayjs(draft.rankDate)); setTrafficAsin(draft.trafficAsin); setTrafficCountry(draft.trafficCountry); }
+      setRankDraftLoaded(true);
+    });
+  }, []);
+  useEffect(() => { if (rankDraftLoaded) void setSetting(RANK_ANALYSIS_DRAFT_SETTING, { ownAsin, competitorAsins, country, rankDate: rankDate.format('YYYY-MM-DD'), trafficAsin, trafficCountry }); }, [ownAsin, competitorAsins, country, rankDate, trafficAsin, trafficCountry, rankDraftLoaded]);
 
   useEffect(() => {
     let cancelled = false;
