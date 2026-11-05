@@ -505,7 +505,17 @@ interface RankLookupRow { asin: string; keyword: string; trends: HourlyRankPoint
 interface RankTrackingItem { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; createdAt: string; lastFetchedAt?: string; trafficScore?: number | null }
 interface CloudRankTrackingRow { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; created_at: string; last_fetched_at: string | null; traffic_score: number | null }
 interface CloudAsinKeywordLibrary { asin: string; country: string; keywords: string[] }
-interface AsinTrafficKeyword { searchTerm: string; ranks?: { position: string; totalRank?: number | null }[]; traffic?: { total?: number; organic?: number; advertising?: number } | null; trafficAcquisitionRate?: { total?: number; organic?: number; advertising?: number } | null }
+interface AsinTrafficKeyword {
+  searchTerm: string;
+  ranks?: { position: string; totalRank?: number | null }[];
+  traffic?: { total?: number; organic?: number; advertising?: number; score?: number; share?: number } | null;
+  trafficAcquisitionRate?: { total?: number; organic?: number; advertising?: number } | null;
+  trafficScore?: number | string | null;
+  flowScore?: number | string | null;
+  flow_score?: number | string | null;
+  trafficShare?: number | string | null;
+  traffic_share?: number | string | null;
+}
 const RANK_TRACKING_SETTING = 'keyword-rank-tracking:v1';
 const ASIN_KEYWORD_LIBRARY_SETTING = 'asin-keyword-library:v1';
 
@@ -532,6 +542,27 @@ function trafficScore(row: RankLookupRow): number | null {
     if (typeof value === 'string' && Number.isFinite(Number(value))) return Number(value);
   }
   return null;
+}
+
+function numericValue(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function trafficKeywordScore(row: AsinTrafficKeyword): number | null {
+  for (const value of [row.trafficScore, row.flowScore, row.flow_score, row.traffic?.score]) {
+    const score = numericValue(value);
+    if (score !== null) return score;
+  }
+  return null;
+}
+
+function trafficKeywordShare(row: AsinTrafficKeyword, allTraffic: number): number {
+  for (const value of [row.trafficShare, row.traffic_share, row.traffic?.share]) {
+    const share = numericValue(value);
+    if (share !== null) return share > 1 ? share / 100 : share;
+  }
+  return allTraffic ? (row.traffic?.total ?? 0) / allTraffic : 0;
 }
 
 function DailyRankChart({ row }: { row: RankLookupRow }) {
@@ -876,7 +907,8 @@ export function AsinTrafficKeywordsPage() {
       <Table<AsinTrafficKeyword> rowKey={(row) => row.searchTerm} size="small" className="traffic-keyword-table" loading={loading} dataSource={rows} pagination={tablePagination(20)} scroll={{ x: 1260 }} locale={{ emptyText: loading ? '正在读取西柚已抓取快照…' : '暂无流量词数据' }} columns={[
         { title: '#', width: 58, render: (_, __, index) => <Text type="secondary">{index + 1}</Text> },
         { title: '流量词', dataIndex: 'searchTerm', fixed: 'left', width: 280, render: (value: string, row) => <div className="traffic-word"><b>{value}</b><div><Tag color={(row.traffic?.organic ?? 0) >= (row.traffic?.advertising ?? 0) ? 'green' : 'orange'}>{(row.traffic?.organic ?? 0) >= (row.traffic?.advertising ?? 0) ? '自然主导' : '广告主导'}</Tag><Text type="secondary">近 7 天</Text></div></div> },
-        { title: '流量占比 / 总流量', width: 190, render: (_, row) => { const itemTotal = row.traffic?.total ?? 0; const share = trafficTotal ? itemTotal / trafficTotal : 0; return <div className="traffic-share"><b>{percent(share)}</b><span>{integer(itemTotal)}</span><i><em style={{ width: `${Math.min(100, share * 100)}%` }} /></i></div>; } },
+        { title: '流量占比', width: 155, render: (_, row) => { const share = trafficKeywordShare(row, trafficTotal); return <div className="traffic-share"><b>{percent(share)}</b><i><em style={{ width: `${Math.min(100, share * 100)}%` }} /></i></div>; } },
+        { title: '流量得分', width: 130, render: (_, row) => { const score = trafficKeywordScore(row); return <Space orientation="vertical" size={0}><Text strong>{score === null ? '未返回' : score.toFixed(2)}</Text><Text type="secondary">总流量 {integer(row.traffic?.total ?? 0)}</Text></Space>; } },
         { title: '自然排名（OR）', width: 150, render: (_, row) => { const rank = row.ranks?.find((value) => value.position?.toLowerCase() === 'or')?.totalRank; return <span className="rank-badge rank-organic">{rank ? `#${rank}` : '未出现'}</span>; } },
         { title: 'SP 广告排名', width: 150, render: (_, row) => { const rank = row.ranks?.find((value) => value.position?.toLowerCase() === 'sp')?.totalRank; return <span className="rank-badge rank-sponsored">{rank ? `#${rank}` : '未出现'}</span>; } },
         { title: '获流结构', width: 215, render: (_, row) => { const organic = row.traffic?.organic ?? 0; const advertising = row.traffic?.advertising ?? 0; const itemTotal = organic + advertising; const organicRate = itemTotal ? (organic / itemTotal) * 100 : 0; return <div className="traffic-mix"><div><span>自然 {integer(organic)}</span><span>广告 {integer(advertising)}</span></div><i><em style={{ width: `${organicRate}%` }} /></i></div>; } },
