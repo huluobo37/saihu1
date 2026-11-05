@@ -504,7 +504,10 @@ interface HourlyRankPoint { date: string; displayPositions: { displayPosition: s
 interface RankLookupRow { asin: string; keyword: string; trends: HourlyRankPoint[]; error?: string }
 interface RankTrackingItem { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; createdAt: string; lastFetchedAt?: string; trafficScore?: number | null }
 interface CloudRankTrackingRow { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; created_at: string; last_fetched_at: string | null; traffic_score: number | null }
+interface CloudAsinKeywordLibrary { asin: string; country: string; keywords: string[] }
+interface AsinTrafficKeyword { searchTerm: string; ranks?: { position: string; totalRank?: number | null }[]; traffic?: { total?: number; organic?: number; advertising?: number } | null; trafficAcquisitionRate?: { total?: number; organic?: number; advertising?: number } | null }
 const RANK_TRACKING_SETTING = 'keyword-rank-tracking:v1';
+const ASIN_KEYWORD_LIBRARY_SETTING = 'asin-keyword-library:v1';
 
 // XiYou can return an empty object (instead of an empty array) when a keyword
 // has no hourly ranking. Keep the results table resilient to that API shape.
@@ -568,6 +571,12 @@ export function KeywordRankingsPage() {
   const [dailyRankRows, setDailyRankRows] = useState<RankLookupRow[]>([]);
   const [trackingItems, setTrackingItems] = useState<RankTrackingItem[]>([]);
   const [trackingLoaded, setTrackingLoaded] = useState(false);
+  const [asinKeywordLibrary, setAsinKeywordLibrary] = useState<Record<string, string[]>>({});
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const [trafficKeywordRows, setTrafficKeywordRows] = useState<AsinTrafficKeyword[]>([]);
+  const [trafficKeywordTotal, setTrafficKeywordTotal] = useState(0);
+  const [trafficKeywordError, setTrafficKeywordError] = useState<string | null>(null);
+  const [trafficLoading, setTrafficLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -589,6 +598,20 @@ export function KeywordRankingsPage() {
     return () => { cancelled = true; };
   }, []);
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const localLibrary = await getSetting<Record<string, string[]>>(ASIN_KEYWORD_LIBRARY_SETTING) ?? {};
+      const session = await getCurrentSession(); const supabase = getSupabaseClient();
+      let cloudLibrary: Record<string, string[]> = {};
+      if (session && supabase) {
+        const { data } = await supabase.from('asin_keyword_libraries').select('asin, country, keywords');
+        cloudLibrary = Object.fromEntries(((data ?? []) as CloudAsinKeywordLibrary[]).map((item) => [`${item.asin}|${item.country}`, Array.isArray(item.keywords) ? item.keywords : []]));
+      }
+      if (!cancelled) { setAsinKeywordLibrary({ ...cloudLibrary, ...localLibrary }); setLibraryLoaded(true); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
     if (!trackingLoaded) return;
     void setSetting(RANK_TRACKING_SETTING, trackingItems);
     void (async () => {
@@ -598,6 +621,19 @@ export function KeywordRankingsPage() {
       await supabase.from('keyword_rank_tracking').upsert(trackingItems.map((item) => ({ id: item.id, asin: item.asin, keyword: item.keyword, country: item.country, product: item.product, campaign: item.campaign, active: item.active, created_at: item.createdAt, last_fetched_at: item.lastFetchedAt ?? null, traffic_score: item.trafficScore ?? null })), { onConflict: 'id' });
     })();
   }, [trackingItems, trackingLoaded]);
+  useEffect(() => {
+    if (!libraryLoaded) return;
+    void setSetting(ASIN_KEYWORD_LIBRARY_SETTING, asinKeywordLibrary);
+    void (async () => {
+      const session = await getCurrentSession(); const supabase = getSupabaseClient();
+      if (!session || !supabase) return;
+      const rows = Object.entries(asinKeywordLibrary).map(([key, keywords]) => {
+        const [asin, savedCountry = 'US'] = key.split('|');
+        return { asin, country: savedCountry, keywords, updated_at: new Date().toISOString() };
+      });
+      if (rows.length) await supabase.from('asin_keyword_libraries').upsert(rows, { onConflict: 'user_id,asin,country' });
+    })();
+  }, [asinKeywordLibrary, libraryLoaded]);
 
   const reportKeywordChoices = filtered.filter((row) => row.reportType === 'adGroup' && row.target && row.campaign).map((row) => {
     const choice: RankKeywordChoice = { key: `${row.product ?? ''}|${row.store ?? ''}|${row.campaign ?? ''}|${row.adGroup ?? ''}|${row.target ?? ''}`, keyword: row.target!, product: row.product ?? null, store: row.store ?? null, campaign: row.campaign ?? null, adGroup: row.adGroup ?? null, matchType: row.matchType ?? null };
@@ -605,10 +641,22 @@ export function KeywordRankingsPage() {
   });
   const keywordChoices = [...new Map([...reportKeywordChoices, ...manualKeywords.map((keyword) => ({ key: `manual|${keyword}`, keyword, product: null, store: null, campaign: '手动添加', adGroup: null, matchType: null }))].map((choice) => [choice.key, choice] as const)).values()];
   const selectedKeywords = keywordChoices.filter((choice) => selectedKeys.includes(choice.key)).map((choice) => choice.keyword);
+  const libraryKey = (asin: string, savedCountry = country) => `${asin.trim().toUpperCase()}|${savedCountry}`;
+  const saveKeywordsForAsin = (asin: string, keywords: string[]) => {
+    if (!/^[A-Z0-9]{10}$/i.test(asin.trim()) || !keywords.length) return;
+    const key = libraryKey(asin);
+    setAsinKeywordLibrary((current) => ({ ...current, [key]: [...new Set([...(current[key] ?? []), ...keywords.map((value) => value.trim()).filter(Boolean)])].sort() }));
+  };
+  const loadSavedKeywords = (key: string) => {
+    const saved = asinKeywordLibrary[key] ?? [];
+    setManualKeywords((current) => [...new Set([...current, ...saved])]);
+    message.success(`已载入 ${saved.length} 个保存的关键词`);
+  };
   const addManualKeywords = () => {
     const additions = manualKeywordInput.split(/[，,\n]/).map((value) => value.trim()).filter(Boolean);
     if (!additions.length) { message.warning('请输入至少一个关键词'); return; }
     setManualKeywords((current) => [...new Set([...current, ...additions])]);
+    saveKeywordsForAsin(ownAsin, additions);
     setManualKeywordInput('');
     message.success(`已添加 ${additions.length} 个关键词`);
   };
@@ -633,6 +681,8 @@ export function KeywordRankingsPage() {
       }
       return next;
     });
+    saveKeywordsForAsin(ownAsin, selectedKeywords);
+    void runLookup();
     message.success(`已加入 ${selectedKeywords.length} 个关键词的每小时追踪`);
   };
   const stopTracking = (id: string) => {
@@ -645,6 +695,7 @@ export function KeywordRankingsPage() {
     const supabase = getSupabaseClient();
     if (!supabase) { message.error('请先在系统设置中配置 Supabase'); return; }
     setLoading(true);
+    saveKeywordsForAsin(ownAsin, selectedKeywords);
     try {
       const { data, error } = await supabase.functions.invoke<{ results: RankLookupRow[] }>('xiyou-ranks', {
         body: { ownAsin: ownAsin.trim(), competitorAsins: competitorAsins.split(/[，,\n]/).map((value) => value.trim()).filter(Boolean), country, date: rankDate.format('YYYY-MM-DD'), keywords: selectedKeywords },
@@ -661,6 +712,7 @@ export function KeywordRankingsPage() {
     const supabase = getSupabaseClient();
     if (!supabase) { message.error('请先在系统设置中配置 Supabase'); return; }
     setLoading(true);
+    saveKeywordsForAsin(ownAsin, selectedKeywords);
     try {
       const { data, error } = await supabase.functions.invoke<{ results: RankLookupRow[] }>('xiyou-ranks', {
         body: { ownAsin: ownAsin.trim(), competitorAsins: competitorAsins.split(/[，,\n]/).map((value) => value.trim()).filter(Boolean), country, date: rankDate.format('YYYY-MM-DD'), startDate: rankDate.subtract(29, 'day').format('YYYY-MM-DD'), endDate: rankDate.format('YYYY-MM-DD'), mode: 'daily', keywords: selectedKeywords },
@@ -670,6 +722,29 @@ export function KeywordRankingsPage() {
       message.success('每日排名趋势已更新');
     } catch (error) { message.error(error instanceof Error ? error.message : '每日排名抓取失败'); }
     finally { setLoading(false); }
+  };
+  const fetchTrackedItem = async (item: RankTrackingItem) => {
+    const supabase = getSupabaseClient(); if (!supabase) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ results: RankLookupRow[] }>('xiyou-ranks', { body: { ownAsin: item.asin, country: item.country, date: dayjs().format('YYYY-MM-DD'), keywords: [item.keyword] } });
+      if (error) throw error;
+      const results = data?.results ?? []; const now = new Date().toISOString();
+      setRankRows((current) => [...results, ...current.filter((row) => !results.some((result) => result.asin === row.asin && result.keyword === row.keyword))]);
+      setTrackingItems((current) => current.map((value) => value.id === item.id ? { ...value, lastFetchedAt: now, trafficScore: results[0] ? trafficScore(results[0]) : value.trafficScore } : value));
+      message.success('已立即抓取该关键词排名');
+    } catch (error) { message.error(error instanceof Error ? error.message : '抓取失败'); } finally { setLoading(false); }
+  };
+  const runTrafficKeywordLookup = async () => {
+    if (!/^[A-Z0-9]{10}$/i.test(ownAsin.trim())) { message.warning('请先输入有效的 ASIN（10 位）'); return; }
+    const supabase = getSupabaseClient(); if (!supabase) { message.error('请先配置 Supabase'); return; }
+    setTrafficLoading(true); setTrafficKeywordError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ trafficKeywords: AsinTrafficKeyword[]; total: number; error?: string }>('xiyou-ranks', { body: { operation: 'asin_keywords', ownAsin: ownAsin.trim(), country, date: dayjs().format('YYYY-MM-DD'), keywords: [] } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setTrafficKeywordRows(data?.trafficKeywords ?? []); setTrafficKeywordTotal(data?.total ?? 0);
+    } catch (error) { const reason = error instanceof Error ? error.message : '流量词查询失败'; setTrafficKeywordError(reason); message.error(reason); } finally { setTrafficLoading(false); }
   };
 
   useEffect(() => {
@@ -704,6 +779,13 @@ export function KeywordRankingsPage() {
   return <>
     <PageTitle title="关键词排名分析" subtitle="按广告活动勾选本次关键词，抓取我方与竞品 ASIN 的小时自然排名和 SP 广告排名" />
     <DataScope reportTypes={['adGroup']} />
+    <Card style={{ marginTop: 16 }} title="ASIN 关键词库" extra={<Text type="secondary">新增关键词会自动按 ASIN 保存，可跨刷新和设备调用</Text>}>
+      <Row gutter={[12, 12]} align="middle">
+        <Col xs={24} md={10}><Select allowClear showSearch placeholder="选择已保存的 ASIN 关键词库" style={{ width: '100%' }} options={Object.entries(asinKeywordLibrary).map(([key, keywords]) => ({ value: key, label: `${key.split('|')[0]}（${key.split('|')[1]}） · ${keywords.length} 个词` }))} onChange={(value) => value && loadSavedKeywords(value)} /></Col>
+        <Col xs={24} md={8}><Text type="secondary">当前 ASIN 已保存：{asinKeywordLibrary[libraryKey(ownAsin)]?.length ?? 0} 个关键词</Text></Col>
+        <Col xs={24} md={6}><Button onClick={() => saveKeywordsForAsin(ownAsin, selectedKeywords)} disabled={!selectedKeywords.length}>保存已选关键词</Button></Col>
+      </Row>
+    </Card>
     <Card style={{ marginTop: 16 }} title="分析对象设置">
       <Row gutter={[12, 12]}>
         <Col xs={24} md={8}><Text strong>我方 ASIN</Text><Input value={ownAsin} onChange={(event) => setOwnAsin(event.target.value.toUpperCase())} placeholder="输入我方产品 ASIN" style={{ marginTop: 6 }} /></Col>
@@ -712,6 +794,21 @@ export function KeywordRankingsPage() {
         <Col xs={12} md={4}><Text strong>抓取日期</Text><DatePicker value={rankDate} onChange={(value) => value && setRankDate(value)} style={{ width: '100%', marginTop: 6 }} /></Col>
       </Row>
       <Alert type="info" showIcon style={{ marginTop: 16 }} message="可先使用上方筛选器选定广告活动并勾选投放关键词；也可直接在下方手动添加关键词。系统不会默认分析全部关键词。" />
+    </Card>
+    <Card style={{ marginTop: 16 }} title="ASIN 流量词查询" extra={<Button type="primary" loading={trafficLoading} onClick={() => void runTrafficKeywordLookup()}>查询西柚流量词</Button>}>
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="使用上方的 ASIN 和站点查询西柚近 7 天流量词，按总流量降序展示。" />
+      {trafficKeywordError && <Alert type="error" showIcon style={{ marginBottom: 12 }} message={trafficKeywordError} />}
+      <Table<AsinTrafficKeyword> rowKey={(row) => row.searchTerm} size="small" dataSource={trafficKeywordRows} pagination={tablePagination(20)} scroll={{ x: 1150 }} title={() => <Text type="secondary">共 {trafficKeywordTotal} 个流量词</Text>} columns={[
+        { title: '流量词', dataIndex: 'searchTerm', fixed: 'left', width: 260 },
+        { title: '自然排名（OR）', width: 140, render: (_, row) => row.ranks?.find((rank) => rank.position?.toLowerCase() === 'or')?.totalRank ?? '未出现' },
+        { title: 'SP 广告排名', width: 140, render: (_, row) => row.ranks?.find((rank) => rank.position?.toLowerCase() === 'sp')?.totalRank ?? '未出现' },
+        { title: '总流量', width: 110, render: (_, row) => integer(row.traffic?.total ?? null) },
+        { title: '自然流量', width: 110, render: (_, row) => integer(row.traffic?.organic ?? null) },
+        { title: '广告流量', width: 110, render: (_, row) => integer(row.traffic?.advertising ?? null) },
+        { title: '总获流率', width: 120, render: (_, row) => percent(row.trafficAcquisitionRate?.total ?? null) },
+        { title: '自然获流率', width: 120, render: (_, row) => percent(row.trafficAcquisitionRate?.organic ?? null) },
+        { title: '广告获流率', width: 120, render: (_, row) => percent(row.trafficAcquisitionRate?.advertising ?? null) },
+      ]} />
     </Card>
     <Card style={{ marginTop: 16 }} title="选择本次分析的投放关键词" extra={<Space><Tag color="blue">已选 {selectedKeywords.length} 个</Tag><Button onClick={addTracking}>加入每小时追踪</Button><Button loading={loading} onClick={() => void runDailyLookup()}>抓取每日排名</Button><Button type="primary" loading={loading} onClick={() => void runLookup()}>抓取小时排名</Button></Space>}>
       <Input.Search value={manualKeywordInput} onChange={(event) => setManualKeywordInput(event.target.value)} onSearch={addManualKeywords} enterButton="添加关键词" placeholder="直接输入关键词；可用逗号或换行一次添加多个" style={{ maxWidth: 560, marginBottom: 16 }} />
@@ -722,7 +819,7 @@ export function KeywordRankingsPage() {
     <Card style={{ marginTop: 16 }} title="每小时追踪任务" extra={<Tag color="blue">运行中 {trackingItems.filter((item) => item.active).length} 个</Tag>}>
       <Alert type="info" showIcon style={{ marginBottom: 16 }} message="追踪中的关键词会在本系统保持打开时每小时自动更新；停止后不会再新增排名记录。流量分由西柚返回的关键词流量字段自动标注。" />
       <Table<RankTrackingItem> rowKey="id" size="small" dataSource={trackingItems} pagination={tablePagination(10)} scroll={{ x: 1200 }} columns={[
-        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '站点', dataIndex: 'country', width: 90 }, { title: '流量分', width: 110, render: (_, row) => row.trafficScore === null || row.trafficScore === undefined ? '待抓取' : row.trafficScore.toFixed(2) }, { title: '状态', width: 100, render: (_, row) => <Tag color={row.active ? 'success' : 'default'}>{row.active ? '追踪中' : '已停止'}</Tag> }, { title: '操作', width: 120, render: (_, row) => row.active ? <Button danger size="small" onClick={() => stopTracking(row.id)}>停止抓取</Button> : '—' },
+        { title: '关键词', dataIndex: 'keyword', width: 240 }, { title: 'ASIN', dataIndex: 'asin', width: 150 }, { title: '产品', dataIndex: 'product', width: 130 }, { title: '广告活动', dataIndex: 'campaign', width: 280, ellipsis: true }, { title: '站点', dataIndex: 'country', width: 90 }, { title: '流量分', width: 110, render: (_, row) => row.trafficScore === null || row.trafficScore === undefined ? '待抓取' : row.trafficScore.toFixed(2) }, { title: '状态', width: 100, render: (_, row) => <Tag color={row.active ? 'success' : 'default'}>{row.active ? '追踪中' : '已停止'}</Tag> }, { title: '操作', width: 190, render: (_, row) => row.active ? <Space><Button size="small" loading={loading} onClick={() => void fetchTrackedItem(row)}>立即抓取</Button><Button danger size="small" onClick={() => stopTracking(row.id)}>停止抓取</Button></Space> : <Button size="small" loading={loading} onClick={() => void fetchTrackedItem(row)}>立即抓取</Button> },
       ]} />
     </Card>
     <Card style={{ marginTop: 16 }} title="小时排名结果" extra={<Text type="secondary">自然排名为 OR，SP 广告排名为 SP</Text>}>

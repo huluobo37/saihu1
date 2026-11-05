@@ -38,3 +38,17 @@ alter table public.keyword_rank_tracking enable row level security;
 drop policy if exists "own keyword rank tracking" on public.keyword_rank_tracking;
 create policy "own keyword rank tracking" on public.keyword_rank_tracking for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create index if not exists keyword_rank_tracking_user_active_idx on public.keyword_rank_tracking(user_id, active);
+
+-- Reusable keyword lists organized by ASIN. Kept locally and in the user's
+-- cloud account so saved keywords remain available after changing devices.
+create table if not exists public.asin_keyword_libraries (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  asin text not null,
+  country text not null default 'US',
+  keywords jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, asin, country)
+);
+alter table public.asin_keyword_libraries enable row level security;
+drop policy if exists "own asin keyword libraries" on public.asin_keyword_libraries;
+create policy "own asin keyword libraries" on public.asin_keyword_libraries for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
