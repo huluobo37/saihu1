@@ -414,6 +414,8 @@ export function KeywordLibraryPage() {
   const [manualInput, setManualInput] = useState('');
   const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
   const addKeywords = (values: string[]) => setKeywords((current) => [...new Set([...current, ...values.map((value) => value.trim()).filter(Boolean)])]);
+  const removeKeyword = (keyword: string) => setKeywords((current) => current.filter((value) => value !== keyword));
+  const removeKeyword = (keyword: string) => setKeywords((current) => current.filter((value) => value !== keyword));
   const beforeUpload = async (file: File) => {
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
@@ -449,6 +451,7 @@ export function KeywordLibraryPage() {
   const [manualInput, setManualInput] = useState('');
   const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
   const addKeywords = (values: string[]) => setKeywords((current) => [...new Set([...current, ...values.map((value) => value.trim()).filter(Boolean)])]);
+  const removeKeyword = (keyword: string) => setKeywords((current) => current.filter((value) => value !== keyword));
 
   useEffect(() => { void getSetting<string[]>('keyword-library').then((saved) => { if (saved) setKeywords(saved); }); }, []);
   useEffect(() => { void setSetting('keyword-library', keywords); }, [keywords]);
@@ -466,20 +469,21 @@ export function KeywordLibraryPage() {
     } catch { message.error('\u65e0\u6cd5\u8bfb\u53d6 Excel\uff0c\u8bf7\u786e\u8ba4\u6587\u4ef6\u683c\u5f0f'); }
     return false;
   };
-  const sourceRows = filtered.filter((row) => row.reportType === 'searchTerm' || row.reportType === 'adGroup');
+  const sourceRows = filtered.filter((row) => row.reportType === 'searchTerm' || row.reportType === 'adGroup' || row.reportType === 'campaign');
   const matches: KeywordMatchRow[] = sourceRows.flatMap((row) => keywords.flatMap((keyword) => {
     const normalized = normalize(keyword);
     const matchedIn = [
-      row.searchTerm && normalize(row.searchTerm) === normalized ? '\u7528\u6237\u641c\u7d22\u8bcd' : null,
-      row.target && normalize(row.target) === normalized ? '\u6295\u653e\u5173\u952e\u8bcd' : null,
+      row.searchTerm && normalize(row.searchTerm).includes(normalized) ? '\u7528\u6237\u641c\u7d22\u8bcd' : null,
+      row.target && normalize(row.target).includes(normalized) ? '\u6295\u653e\u5173\u952e\u8bcd' : null,
       row.adGroup && normalize(row.adGroup).includes(normalized) ? '\u5e7f\u544a\u7ec4' : null,
+      row.campaign && normalize(row.campaign).includes(normalized) ? '\u5e7f\u544a\u6d3b\u52a8\u540d\u79f0' : null,
     ].filter(Boolean).join('\u3001');
     return matchedIn ? [{ ...row, keyword, matchedIn }] : [];
   }));
 
   return <>
-    <PageTitle title={'\u5173\u952e\u8bcd\u5e93\u8bc6\u522b'} subtitle={'\u4e0a\u4f20\u5173\u952e\u8bcd Excel \u6216\u76f4\u63a5\u8f93\u5165\u5173\u952e\u8bcd\uff0c\u8bc6\u522b\u7b5b\u9009\u65e5\u671f\u5185\u5df2\u51fa\u73b0\u7684\u641c\u7d22\u8bcd\u3001\u6295\u653e\u5173\u952e\u8bcd\u548c\u5e7f\u544a\u7ec4'} />
-    <DataScope reportTypes={['searchTerm', 'adGroup']} />
+    <PageTitle title={'\u5173\u952e\u8bcd\u5e93\u8bc6\u522b'} subtitle={'\u4e0a\u4f20\u6216\u8f93\u5165\u5173\u952e\u8bcd\uff0c\u8bc6\u522b\u5b83\u662f\u5426\u5df2\u7528\u4e8e\u6295\u653e\u5173\u952e\u8bcd\u3001\u5e7f\u544a\u7ec4\u3001\u5e7f\u544a\u6d3b\u52a8\u6216\u641c\u7d22\u8bcd\uff0c\u5e76\u53ef\u5feb\u901f\u8df3\u8f6c\u5bf9\u5e94\u5e7f\u544a\u6d3b\u52a8'} />
+    <DataScope reportTypes={['campaign', 'searchTerm', 'adGroup']} />
     <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
       <Col xs={24} xl={10}><Card title={'\u5173\u952e\u8bcd\u5e93'}>
         <Upload.Dragger accept=".xlsx" maxCount={1} showUploadList={false} beforeUpload={beforeUpload}>
@@ -488,11 +492,14 @@ export function KeywordLibraryPage() {
         </Upload.Dragger>
         <Input.TextArea value={manualInput} onChange={(event) => setManualInput(event.target.value)} placeholder={'\u4e5f\u53ef\u76f4\u63a5\u8f93\u5165\u5173\u952e\u8bcd\uff1a\u6bcf\u884c\u4e00\u4e2a\uff0c\u6216\u7528\u9017\u53f7\u5206\u9694'} rows={5} style={{ marginTop: 12 }} />
         <Space style={{ marginTop: 12 }}><Button type="primary" onClick={() => { addKeywords(manualInput.split(/[\n,\uff0c]/)); setManualInput(''); }}>{'\u52a0\u5165\u5173\u952e\u8bcd\u5e93'}</Button><Button danger onClick={() => setKeywords([])}>{'\u6e05\u7a7a'}</Button></Space>
-        <Divider /><Text type="secondary">{'\u5f53\u524d\u5173\u952e\u8bcd\u5e93\uff1a'}{keywords.length}{' \u4e2a'}</Text>
+        <Divider /><Text type="secondary">{'\u5f53\u524d\u8f93\u5165\u7684\u5173\u952e\u8bcd\uff1a'}{keywords.length}{' \u4e2a'}</Text>
+        <div style={{ marginTop: 10, maxHeight: 170, overflowY: 'auto' }}>
+          <Space size={[6, 8]} wrap>{keywords.length ? keywords.map((keyword) => <Tag key={keyword} closable onClose={() => removeKeyword(keyword)}>{keyword}</Tag>) : <Text type="secondary">{'\u6682\u65e0\u5df2\u8f93\u5165\u5173\u952e\u8bcd'}</Text>}</Space>
+        </div>
       </Card></Col>
       <Col xs={24} xl={14}><Card title={'\u8bc6\u522b\u7ed3\u679c'} extra={<Tag color="blue">{matches.length}{' \u6761\u547d\u4e2d\u660e\u7ec6'}</Tag>}>
         <Table<KeywordMatchRow> rowKey={(row) => `${row.keyword}:${row.id}`} size="small" dataSource={matches} scroll={{ x: 1600 }} pagination={tablePagination(20)} columns={[
-          { title: '\u5173\u952e\u8bcd\u5e93\u8bcd', dataIndex: 'keyword', fixed: 'left', width: 180 }, { title: '\u547d\u4e2d\u4f4d\u7f6e', dataIndex: 'matchedIn', width: 130, render: (value) => <Tag color="success">{value}</Tag> }, { title: '\u65e5\u671f', dataIndex: 'date', width: 110 }, { title: '\u4ea7\u54c1', dataIndex: 'product', width: 120 }, { title: '\u5e97\u94fa', dataIndex: 'store', width: 90 }, { title: '\u5e7f\u544a\u6d3b\u52a8', dataIndex: 'campaign', width: 240, ellipsis: true }, { title: '\u5e7f\u544a\u7ec4', dataIndex: 'adGroup', width: 220, ellipsis: true }, { title: '\u7528\u6237\u641c\u7d22\u8bcd', dataIndex: 'searchTerm', width: 200, ellipsis: true }, { title: '\u6295\u653e\u5173\u952e\u8bcd', dataIndex: 'target', width: 200, ellipsis: true }, { title: '\u5339\u914d\u7c7b\u578b', dataIndex: 'matchType', width: 110 }, { title: '\u66dd\u5149', dataIndex: 'impressions', width: 90, render: integer }, { title: '\u70b9\u51fb', dataIndex: 'clicks', width: 80, render: integer }, { title: '\u82b1\u8d39', dataIndex: 'spend', width: 90, render: money }, { title: '\u8ba2\u5355', dataIndex: 'orders', width: 80, render: integer }, { title: '\u9500\u552e\u989d', dataIndex: 'sales', width: 95, render: money },
+          { title: '\u5173\u952e\u8bcd\u5e93\u8bcd', dataIndex: 'keyword', fixed: 'left', width: 180 }, { title: '\u547d\u4e2d\u4f4d\u7f6e', dataIndex: 'matchedIn', width: 150, render: (value) => <Tag color="success">{value}</Tag> }, { title: '\u65e5\u671f', dataIndex: 'date', width: 110 }, { title: '\u4ea7\u54c1', dataIndex: 'product', width: 120 }, { title: '\u5e97\u94fa', dataIndex: 'store', width: 90 }, { title: '\u5e7f\u544a\u6d3b\u52a8', dataIndex: 'campaign', width: 260, ellipsis: true, render: (value: string | null, row) => value ? <Link to={`/campaign-detail?campaign=${encodeURIComponent(value)}&product=${encodeURIComponent(row.product ?? '')}`}>{value} {'→'}</Link> : '—' }, { title: '\u5e7f\u544a\u7ec4', dataIndex: 'adGroup', width: 220, ellipsis: true }, { title: '\u7528\u6237\u641c\u7d22\u8bcd', dataIndex: 'searchTerm', width: 200, ellipsis: true }, { title: '\u6295\u653e\u5173\u952e\u8bcd', dataIndex: 'target', width: 200, ellipsis: true }, { title: '\u5339\u914d\u7c7b\u578b', dataIndex: 'matchType', width: 110 }, { title: '\u66dd\u5149', dataIndex: 'impressions', width: 90, render: integer }, { title: '\u70b9\u51fb', dataIndex: 'clicks', width: 80, render: integer }, { title: '\u82b1\u8d39', dataIndex: 'spend', width: 90, render: money }, { title: '\u8ba2\u5355', dataIndex: 'orders', width: 80, render: integer }, { title: '\u9500\u552e\u989d', dataIndex: 'sales', width: 95, render: money },
         ]} />
       </Card></Col>
     </Row>
@@ -503,6 +510,7 @@ interface RankKeywordChoice { key: string; keyword: string; product: string | nu
 interface HourlyRankPoint { date: string; displayPositions: { displayPosition: string; page?: number | null; pageRank?: number; totalRank?: number }[] }
 interface RankLookupRow { asin: string; keyword: string; trends: HourlyRankPoint[]; error?: string }
 interface RankTrackingItem { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; createdAt: string; lastFetchedAt?: string; trafficScore?: number | null }
+interface RankHistoryPoint { asin: string; keyword: string; country: string; fetchedAt: string; organicRank: number | null; sponsoredRank: number | null; trafficScore: number | null }
 interface CloudRankTrackingRow { id: string; asin: string; keyword: string; country: string; product: string | null; campaign: string | null; active: boolean; created_at: string; last_fetched_at: string | null; traffic_score: number | null }
 interface CloudAsinKeywordLibrary { asin: string; country: string; keywords: string[] }
 interface AsinTrafficKeyword {
@@ -517,6 +525,7 @@ interface AsinTrafficKeyword {
   traffic_share?: number | string | null;
 }
 const RANK_TRACKING_SETTING = 'keyword-rank-tracking:v1';
+const RANK_HISTORY_SETTING = 'keyword-rank-history:v1';
 const ASIN_KEYWORD_LIBRARY_SETTING = 'asin-keyword-library:v1';
 
 // XiYou can return an empty object (instead of an empty array) when a keyword
@@ -542,6 +551,20 @@ function trafficScore(row: RankLookupRow): number | null {
     if (typeof value === 'string' && Number.isFinite(Number(value))) return Number(value);
   }
   return null;
+}
+
+async function appendRankHistory(results: RankLookupRow[]) {
+  const now = new Date().toISOString();
+  const added = results.filter((row) => !row.error).map((row): RankHistoryPoint => {
+    const point = [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0];
+    const rankFor = (position: string) => point?.displayPositions?.find((item) => item.displayPosition.toLowerCase() === position)?.totalRank ?? null;
+    return { asin: row.asin, keyword: row.keyword, country: 'US', fetchedAt: now, organicRank: rankFor('or'), sponsoredRank: rankFor('sp'), trafficScore: trafficScore(row) };
+  });
+  if (!added.length) return;
+  const existing = await getSetting<RankHistoryPoint[]>(RANK_HISTORY_SETTING) ?? [];
+  const keys = new Set(added.map((point) => `${point.asin}|${point.keyword}|${point.fetchedAt.slice(0, 13)}`));
+  const retained = existing.filter((point) => !keys.has(`${point.asin}|${point.keyword}|${point.fetchedAt.slice(0, 13)}`));
+  await setSetting(RANK_HISTORY_SETTING, [...retained, ...added].sort((a, b) => a.fetchedAt.localeCompare(b.fetchedAt)).slice(-10000));
 }
 
 function numericValue(value: unknown): number | null {
@@ -585,6 +608,38 @@ function DailyRankChart({ row }: { row: RankLookupRow }) {
     <Line type="monotone" dataKey="or" stroke="#0072B2" strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} />
     <Line type="monotone" dataKey="sp" stroke="#D55E00" strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} />
   </LineChart></ResponsiveContainer></div>;
+}
+
+function AsinHourlyRankChart({ points }: { points: RankHistoryPoint[] }) {
+  const data = points.map((point) => ({ time: dayjs(point.fetchedAt).format('MM-DD HH:mm'), or: point.organicRank, sp: point.sponsoredRank }));
+  if (!data.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚无小时排名记录；请先在关键词排名分析页读取快照或加入追踪" />;
+  return <div style={{ height: 270, minWidth: 520 }}><ResponsiveContainer width="100%" height="100%"><LineChart data={data} margin={{ top: 16, right: 22, left: 2, bottom: 14 }}>
+    <CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="time" minTickGap={44} /><YAxis reversed allowDecimals={false} label={{ value: '排名（越小越靠前）', angle: -90, position: 'insideLeft' }} /><Tooltip formatter={(value, name) => [value ?? '未出现', name === 'or' ? '自然排名（OR）' : 'SP 广告排名']} /><Legend formatter={(value) => value === 'or' ? '自然排名（OR）' : 'SP 广告排名'} />
+    <Line type="monotone" dataKey="or" stroke="#00a870" strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} /><Line type="monotone" dataKey="sp" stroke="#ff7a00" strokeWidth={2.5} connectNulls={false} dot={{ r: 3 }} />
+  </LineChart></ResponsiveContainer></div>;
+}
+
+function AsinHourlyRankCard({ asin, items, history }: { asin: string; items: RankTrackingItem[]; history: RankHistoryPoint[] }) {
+  const [keyword, setKeyword] = useState(items[0]?.keyword ?? '');
+  useEffect(() => { if (!items.some((item) => item.keyword === keyword)) setKeyword(items[0]?.keyword ?? ''); }, [items, keyword]);
+  const selected = items.find((item) => item.keyword === keyword) ?? items[0];
+  const points = history.filter((point) => point.asin === asin && point.keyword === keyword).sort((a, b) => a.fetchedAt.localeCompare(b.fetchedAt));
+  return <Card className="asin-hourly-rank-card" title={<Space><Text strong>{selected?.product || '未分类产品'}</Text><Tag color="green">{asin}</Tag></Space>} extra={<Tag color={items.some((item) => item.active) ? 'success' : 'default'}>{items.some((item) => item.active) ? '监控中' : '已停止'}</Tag>}>
+    <Flex justify="space-between" align="center" gap={12} wrap><Text type="secondary">{items.length} 个监控关键词 · {selected?.country || 'US'} 站 · 最近记录 {points.at(-1) ? dayjs(points.at(-1)!.fetchedAt).format('YYYY-MM-DD HH:mm') : '—'}</Text><Select value={keyword} onChange={setKeyword} style={{ minWidth: 260 }} options={items.map((item) => ({ value: item.keyword, label: item.keyword }))} /></Flex>
+    <div style={{ marginTop: 14 }}><AsinHourlyRankChart points={points} /></div>
+    <Flex justify="space-between" align="center" wrap gap={8}><Text type="secondary">广告活动：{selected?.campaign || '手动添加'} · 流量分：{selected?.trafficScore ?? '待读取'}</Text><Link to={`/keyword-rankings`}>管理关键词与追踪 →</Link></Flex>
+  </Card>;
+}
+
+export function AsinHourlyRankMonitorPage() {
+  const [items, setItems] = useState<RankTrackingItem[]>([]);
+  const [history, setHistory] = useState<RankHistoryPoint[]>([]);
+  useEffect(() => { void Promise.all([getSetting<RankTrackingItem[]>(RANK_TRACKING_SETTING), getSetting<RankHistoryPoint[]>(RANK_HISTORY_SETTING)]).then(([savedItems, savedHistory]) => { setItems(savedItems ?? []); setHistory(savedHistory ?? []); }); }, []);
+  const byAsin = new Map<string, RankTrackingItem[]>();
+  for (const item of items) byAsin.set(item.asin, [...(byAsin.get(item.asin) ?? []), item]);
+  return <div className="sif-rank-page"><PageTitle title="ASIN 小时排名监控" subtitle="以产品卡片展示每个 ASIN 的投放关键词小时排名变化；自然排名与 SP 广告排名同步绘制" extra={<Link to="/keyword-rankings"><Button type="primary">管理监控关键词</Button></Link>} />
+    {!items.length ? <Card style={{ marginTop: 16 }}><Empty description="尚未建立 ASIN 关键词监控，请先在关键词排名分析中加入每小时追踪"><Link to="/keyword-rankings"><Button type="primary">前往设置监控</Button></Link></Empty></Card> : <Row gutter={[16, 16]} style={{ marginTop: 16 }}>{[...byAsin.entries()].map(([asin, group]) => <Col xs={24} xl={12} key={asin}><AsinHourlyRankCard asin={asin} items={group} history={history} /></Col>)}</Row>}
+  </div>;
 }
 
 export function KeywordRankingsPage() {
@@ -697,7 +752,7 @@ export function KeywordRankingsPage() {
 
   const latestRank = (row: RankLookupRow, position: string) => {
     const point = [...hourlyTrends(row)].sort((a, b) => b.date.localeCompare(a.date))[0];
-    return point?.displayPositions.find((item) => item.displayPosition === position)?.totalRank ?? null;
+    return point?.displayPositions.find((item) => item.displayPosition.toLowerCase() === position)?.totalRank ?? null;
   };
   const addTracking = () => {
     if (!/^[A-Z0-9]{10}$/i.test(ownAsin.trim())) { message.warning('请先输入有效的我方 ASIN（10 位）'); return; }
@@ -736,6 +791,7 @@ export function KeywordRankingsPage() {
       });
       if (error) throw error;
       setRankRows(data?.results ?? []);
+      void appendRankHistory(data?.results ?? []);
       message.success('已读取西柚已抓取的排名快照');
     } catch (error) { message.error(error instanceof Error ? error.message : '西柚排名快照读取失败'); }
     finally { setLoading(false); }
@@ -765,6 +821,7 @@ export function KeywordRankingsPage() {
       if (error) throw error;
       const results = data?.results ?? []; const now = new Date().toISOString();
       setRankRows((current) => [...results, ...current.filter((row) => !results.some((result) => result.asin === row.asin && result.keyword === row.keyword))]);
+      void appendRankHistory(results);
       setTrackingItems((current) => current.map((value) => value.id === item.id ? { ...value, lastFetchedAt: now, trafficScore: results[0] ? trafficScore(results[0]) : value.trafficScore } : value));
       message.success('已立即抓取该关键词排名');
     } catch (error) { message.error(error instanceof Error ? error.message : '抓取失败'); } finally { setLoading(false); }
@@ -801,6 +858,7 @@ export function KeywordRankingsPage() {
         if (!results.length) continue;
         const now = new Date().toISOString();
         setRankRows((current) => [...results, ...current.filter((row) => !results.some((result) => result.asin === row.asin && result.keyword === row.keyword))]);
+        void appendRankHistory(results);
         setTrackingItems((current) => current.map((item) => {
           const result = results.find((row) => row.asin === item.asin && row.keyword === item.keyword);
           return result ? { ...item, lastFetchedAt: now, trafficScore: trafficScore(result) } : item;
