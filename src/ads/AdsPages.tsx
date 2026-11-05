@@ -989,7 +989,7 @@ export function KeywordRankingsPage() {
 }
 
 export function CampaignKeywordRankingsPage() {
-  const { filtered } = useAds();
+  const { records } = useAds();
   const { message } = App.useApp();
   const [campaign, setCampaign] = useState('');
   const [ownAsin, setOwnAsin] = useState('');
@@ -1008,7 +1008,10 @@ export function CampaignKeywordRankingsPage() {
   }, []);
   useEffect(() => { if (draftLoaded) void setSetting(CAMPAIGN_RANK_DRAFT_SETTING, { campaign, ownAsin, country, rankDate: rankDate.format('YYYY-MM-DD'), selectedKeys: selectedKeys.map(String) }); }, [campaign, ownAsin, country, rankDate, selectedKeys, draftLoaded]);
 
-  const campaignRows = filtered.filter((row) => row.reportType === 'adGroup' && row.campaign && row.target);
+  // Campaign choices come from every uploaded ad-group record, not only the
+  // current DataScope result. This keeps the selector usable when a date or
+  // product filter happens to have no matching rows.
+  const campaignRows = records.filter((row) => row.reportType === 'adGroup' && row.campaign && row.target);
   const campaigns = [...new Set(campaignRows.map((row) => row.campaign!))].sort();
   const choices: RankKeywordChoice[] = [...new Map(campaignRows.filter((row) => !campaign || row.campaign === campaign).map((row) => {
     const choice: RankKeywordChoice = { key: `${row.product ?? ''}|${row.store ?? ''}|${row.campaign ?? ''}|${row.adGroup ?? ''}|${row.target ?? ''}`, keyword: row.target!, product: row.product ?? null, store: row.store ?? null, campaign: row.campaign ?? null, adGroup: row.adGroup ?? null, matchType: row.matchType ?? null };
@@ -1019,7 +1022,7 @@ export function CampaignKeywordRankingsPage() {
   useEffect(() => {
     const allowed = new Set(choices.map((choice) => choice.key));
     setSelectedKeys((current) => current.filter((key) => allowed.has(String(key))));
-  }, [campaign, filtered.length]);
+  }, [campaign, records.length]);
 
   const run = async () => {
     if (!campaign) { message.warning('请先选择一个广告活动'); return; }
