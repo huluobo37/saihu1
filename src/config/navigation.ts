@@ -8,6 +8,7 @@ export interface NavNode {
 }
 
 export const NAVIGATION: NavNode[] = [
+  { key: '/sorftime-market', labelKey: '竞品市场数据', icon: 'chart' },
   { key: '/overview', labelKey: '数据总览', icon: 'dashboard' },
   { key: '/campaigns', labelKey: '广告活动分析', icon: 'chart' },
   { key: '/search-terms', labelKey: '搜索词分析', icon: 'search' },

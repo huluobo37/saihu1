@@ -522,6 +522,7 @@ interface AsinTrafficKeyword {
   trafficShare?: number | string | null;
   traffic_share?: number | string | null;
 }
+interface SorftimeMarketResult { asin: string; data: unknown; error?: string; fetchedAt: string }
 const RANK_TRACKING_SETTING = 'keyword-rank-tracking:v1';
 const RANK_HISTORY_SETTING = 'keyword-rank-history:v1';
 const RANK_MONITOR_DRAFT_SETTING = 'keyword-rank-monitor-draft:v1';
@@ -530,6 +531,22 @@ const ASIN_KEYWORD_LIBRARY_SETTING = 'asin-keyword-library:v1';
 const CAMPAIGN_RANK_DRAFT_SETTING = 'campaign-keyword-rank-draft:v1';
 const ASIN_TRAFFIC_DRAFT_SETTING = 'asin-traffic-query-draft:v1';
 const ASIN_TRAFFIC_RESULT_SETTING = 'asin-traffic-query-result:v1';
+const SORFTIME_MARKET_DRAFT_SETTING = 'sorftime-market-draft:v1';
+const SORFTIME_MARKET_RESULT_SETTING = 'sorftime-market-result:v1';
+
+function marketValue(data: unknown, keys: string[]): string | number | null {
+  if (!data || typeof data !== 'object') return null;
+  const object = data as Record<string, unknown>;
+  for (const key of keys) {
+    const value = object[key];
+    if (typeof value === 'string' || typeof value === 'number') return value;
+  }
+  for (const nested of ['data', 'result', 'product', 'item']) {
+    const value = marketValue(object[nested], keys);
+    if (value !== null) return value;
+  }
+  return null;
+}
 
 // XiYou can return an empty object (instead of an empty array) when a keyword
 // has no hourly ranking. Keep the results table resilient to that API shape.
@@ -1136,6 +1153,55 @@ export function AsinTrafficKeywordsPage() {
         { title: '获流结构', width: 215, render: (_, row) => { const organic = row.traffic?.organic ?? 0; const advertising = row.traffic?.advertising ?? 0; const itemTotal = organic + advertising; const organicRate = itemTotal ? (organic / itemTotal) * 100 : 0; return <div className="traffic-mix"><div><span>自然 {integer(organic)}</span><span>广告 {integer(advertising)}</span></div><i><em style={{ width: `${organicRate}%` }} /></i></div>; } },
         { title: '获流率', width: 200, render: (_, row) => <div className="acquisition-rates"><span>总 <b>{percent(row.trafficAcquisitionRate?.total ?? null)}</b></span><span>自然 {percent(row.trafficAcquisitionRate?.organic ?? null)}</span><span>广告 {percent(row.trafficAcquisitionRate?.advertising ?? null)}</span></div> },
       ]} />
+    </Card>
+  </div>;
+}
+
+export function SorftimeMarketPage() {
+  const { message } = App.useApp();
+  const [asinsInput, setAsinsInput] = useState('');
+  const [country, setCountry] = useState('US');
+  const [operation, setOperation] = useState<'product_detail' | 'product_report'>('product_detail');
+  const [results, setResults] = useState<SorftimeMarketResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { void Promise.all([getSetting<{ asins: string; country: string; operation: 'product_detail' | 'product_report' }>(SORFTIME_MARKET_DRAFT_SETTING), getSetting<SorftimeMarketResult[]>(SORFTIME_MARKET_RESULT_SETTING)]).then(([draft, saved]) => { if (draft) { setAsinsInput(draft.asins); setCountry(draft.country); setOperation(draft.operation); } setResults(saved ?? []); setLoaded(true); }); }, []);
+  useEffect(() => { if (loaded) void setSetting(SORFTIME_MARKET_DRAFT_SETTING, { asins: asinsInput, country, operation }); }, [asinsInput, country, operation, loaded]);
+  const query = async () => {
+    const asins = [...new Set(asinsInput.split(/[\n,，\s]+/).map((value) => value.trim().toUpperCase()).filter(Boolean))];
+    if (!asins.length || asins.some((asin) => !/^[A-Z0-9]{10}$/.test(asin))) { message.warning('请输入有效的 ASIN，每次最多 20 个'); return; }
+    const supabase = getSupabaseClient();
+    if (!supabase) { message.error('请先在系统设置中配置 Supabase'); return; }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ results: SorftimeMarketResult[]; error?: string }>('sorftime-market', { body: { asins, country, operation } });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const next = data?.results ?? [];
+      setResults(next); await setSetting(SORFTIME_MARKET_RESULT_SETTING, next);
+      message.success(`已获取 ${next.length} 个竞品 ASIN 的 Sorftime 数据`);
+    } catch (error) { message.error(error instanceof Error ? error.message : 'Sorftime 市场数据查询失败'); }
+    finally { setLoading(false); }
+  };
+  const columns = [
+    { title: 'ASIN', dataIndex: 'asin', fixed: 'left' as const, width: 150 },
+    { title: '产品名称', width: 300, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['title', 'product_title', 'name']) ?? '—' },
+    { title: '价格', width: 110, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['price', 'buybox_price', 'current_price']) ?? '—' },
+    { title: '月销量', width: 120, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['month_sale_volume', 'monthly_sales', 'sales_volume', 'sale_count']) ?? '—' },
+    { title: '评分', width: 100, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['rating', 'star', 'score']) ?? '—' },
+    { title: '评论数', width: 110, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['review_count', 'comment_count', 'ratings_count']) ?? '—' },
+    { title: '类目排名', width: 120, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['bsr', 'category_rank', 'sales_rank']) ?? '—' },
+    { title: '品牌/卖家', width: 220, render: (_: unknown, row: SorftimeMarketResult) => `${marketValue(row.data, ['brand']) ?? '—'} / ${marketValue(row.data, ['seller_name', 'seller']) ?? '—'}` },
+    { title: '状态', width: 220, render: (_: unknown, row: SorftimeMarketResult) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取</Tag> },
+  ];
+  return <div className="sif-rank-page">
+    <PageTitle title="竞品市场数据" subtitle="通过 Sorftime 查询竞品 ASIN 的销量、价格、评分、评论和类目排名；查询条件与结果会自动保存" />
+    <Card style={{ marginTop: 16 }} title="查询设置" extra={<Button type="primary" loading={loading} onClick={() => void query()}>查询竞品数据</Button>}>
+      <Row gutter={[12, 12]}><Col xs={24} md={12}><Text strong>竞品 ASIN</Text><Input.TextArea value={asinsInput} onChange={(event) => setAsinsInput(event.target.value.toUpperCase())} placeholder="每行一个，或用逗号/空格分隔，最多 20 个" autoSize={{ minRows: 2, maxRows: 5 }} style={{ marginTop: 6 }} /></Col><Col xs={12} md={5}><Text strong>Amazon 站点</Text><Select value={country} onChange={setCountry} options={[{ value: 'US', label: '美国站' }, { value: 'GB', label: '英国站' }, { value: 'CA', label: '加拿大站' }, { value: 'DE', label: '德国站' }, { value: 'JP', label: '日本站' }]} style={{ width: '100%', marginTop: 6 }} /></Col><Col xs={12} md={7}><Text strong>查询类型</Text><Select value={operation} onChange={setOperation} options={[{ value: 'product_detail', label: '基础销量与价格' }, { value: 'product_report', label: '产品分析报告' }]} style={{ width: '100%', marginTop: 6 }} /></Col></Row>
+      <Alert type="info" showIcon style={{ marginTop: 16 }} message="数据来自 Sorftime MCP。密钥只在 Supabase Edge Function 中使用，浏览器不会接触密钥。" />
+    </Card>
+    <Card style={{ marginTop: 16 }} title="竞品结果" extra={<Text type="secondary">{results.length} 个 ASIN</Text>}>
+      <Table<SorftimeMarketResult> rowKey="asin" loading={loading} dataSource={results} columns={columns} scroll={{ x: 1400 }} pagination={tablePagination(20)} locale={{ emptyText: '请输入 ASIN 后查询 Sorftime 数据' }} />
     </Card>
   </div>;
 }
