@@ -25,6 +25,7 @@ export const ROUTE_PATHS = [
   '/campaign-keyword-rankings',
   '/asin-hourly-rankings',
   '/asin-traffic-keywords',
+  '/traffic-analysis',
   '/sorftime-market',
   '/search-term-detail',
   '/trends',

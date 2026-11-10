@@ -1206,6 +1206,73 @@ export function SorftimeMarketPage() {
   </div>;
 }
 
+interface TrafficAnalysisChoice { key: string; keyword: string; product: string | null; store: string | null; campaign: string | null; adGroup: string | null }
+interface TrafficAnalysisResult extends AsinTrafficKeyword { product?: string | null; store?: string | null; campaign?: string | null; adGroup?: string | null }
+const TRAFFIC_ANALYSIS_DRAFT_SETTING = 'traffic-analysis-draft:v1';
+const TRAFFIC_ANALYSIS_RESULT_SETTING = 'traffic-analysis-result:v1';
+
+function trafficField(row: AsinTrafficKeyword, keys: string[]): string | number | null {
+  const source = row as unknown as Record<string, unknown>;
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' || typeof value === 'number') return value;
+  }
+  return null;
+}
+
+export function TrafficAnalysisPage() {
+  const { records } = useAds();
+  const { message } = App.useApp();
+  const [product, setProduct] = useState('');
+  const [campaign, setCampaign] = useState('');
+  const [adGroup, setAdGroup] = useState('');
+  const [asin, setAsin] = useState('');
+  const [country, setCountry] = useState('US');
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [results, setResults] = useState<TrafficAnalysisResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const keywordRows = records.filter((row) => row.reportType === 'adGroup' && row.target && row.campaign && (!product || row.product === product) && (!campaign || row.campaign === campaign) && (!adGroup || row.adGroup === adGroup));
+  const choices = [...new Map(keywordRows.map((row) => {
+    const keyword = row.target!.trim();
+    return [`${keyword}|${row.product ?? ''}|${row.store ?? ''}|${row.campaign ?? ''}|${row.adGroup ?? ''}`, { key: `${keyword}|${row.product ?? ''}|${row.store ?? ''}|${row.campaign ?? ''}|${row.adGroup ?? ''}`, keyword, product: row.product, store: row.store, campaign: row.campaign, adGroup: row.adGroup } satisfies TrafficAnalysisChoice];
+  })).values()];
+  const products = [...new Set(records.filter((row) => row.reportType === 'adGroup' && row.product).map((row) => row.product!))].sort();
+  const campaigns = [...new Set(records.filter((row) => row.reportType === 'adGroup' && row.campaign && (!product || row.product === product)).map((row) => row.campaign!))].sort();
+  const groups = [...new Set(records.filter((row) => row.reportType === 'adGroup' && row.adGroup && (!product || row.product === product) && (!campaign || row.campaign === campaign)).map((row) => row.adGroup!))].sort();
+  useEffect(() => { void Promise.all([getSetting<{ product: string; campaign: string; adGroup: string; asin: string; country: string; selectedKeys: string[] }>(TRAFFIC_ANALYSIS_DRAFT_SETTING), getSetting<TrafficAnalysisResult[]>(TRAFFIC_ANALYSIS_RESULT_SETTING)]).then(([draft, saved]) => { if (draft) { setProduct(draft.product); setCampaign(draft.campaign); setAdGroup(draft.adGroup); setAsin(draft.asin); setCountry(draft.country); setSelectedKeys(draft.selectedKeys); } setResults(saved ?? []); setLoaded(true); }); }, []);
+  useEffect(() => { if (loaded) void setSetting(TRAFFIC_ANALYSIS_DRAFT_SETTING, { product, campaign, adGroup, asin, country, selectedKeys }); }, [product, campaign, adGroup, asin, country, selectedKeys, loaded]);
+  const query = async () => {
+    if (!/^[A-Z0-9]{10}$/i.test(asin.trim())) { message.warning('请输入有效的 ASIN（10 位）'); return; }
+    const selected = choices.filter((choice) => selectedKeys.includes(choice.key));
+    if (!selected.length) { message.warning('请先选择至少一个投放关键词'); return; }
+    const supabase = getSupabaseClient(); if (!supabase) { message.error('请先配置 Supabase'); return; }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ trafficKeywords: AsinTrafficKeyword[]; error?: string }>('xiyou-ranks', { body: { operation: 'asin_keywords', ownAsin: asin.trim().toUpperCase(), country, date: dayjs().format('YYYY-MM-DD'), keywords: selected.map((choice) => choice.keyword) } });
+      if (error) throw error; if (data?.error) throw new Error(data.error);
+      const next = (data?.trafficKeywords ?? []).map((row) => { const match = selected.find((choice) => choice.keyword.toLowerCase() === row.searchTerm.toLowerCase()); return { ...row, product: match?.product, store: match?.store, campaign: match?.campaign, adGroup: match?.adGroup }; });
+      setResults(next); await setSetting(TRAFFIC_ANALYSIS_RESULT_SETTING, next); message.success(`已获取 ${next.length} 个关键词的流量数据`);
+    } catch (error) { message.error(error instanceof Error ? error.message : '西柚流量数据查询失败'); } finally { setLoading(false); }
+  };
+  const trafficTotal = results.reduce((sum, row) => sum + (row.traffic?.total ?? 0), 0);
+  const columns: ColumnsType<TrafficAnalysisResult> = [
+    { title: '关键词 / ASIN', dataIndex: 'searchTerm', fixed: 'left', width: 300, render: (value: string, row) => <div><Text strong>{value}</Text><div><Text type="secondary">{asin || '—'} · {row.product || '未分类产品'} · {row.campaign || '手动查询'}</Text></div></div> },
+    { title: '流量', width: 120, sorter: (a, b) => (b.traffic?.total ?? 0) - (a.traffic?.total ?? 0), render: (_, row) => <div><Text strong>{integer(row.traffic?.total ?? null)}</Text><div style={{ color: '#e5484d', fontSize: 12 }}>西柚快照</div></div> },
+    { title: '流量分布（自然 · 广告）', width: 230, render: (_, row) => { const organic = row.traffic?.organic ?? 0; const advertising = row.traffic?.advertising ?? 0; const total = organic + advertising || 1; return <div><Text type="secondary">{percent(organic / total)}　{percent(advertising / total)}</Text><div style={{ display: 'flex', height: 10, marginTop: 6, borderRadius: 5, overflow: 'hidden', background: '#ffd7cc' }}><span style={{ width: `${organic / total * 100}%`, background: '#ff7f66' }} /><span style={{ width: `${advertising / total * 100}%`, background: '#ffc0b0' }} /></div></div>; } },
+    { title: '自然排名', width: 130, render: (_, row) => { const rank = row.ranks?.find((item) => item.position.toLowerCase() === 'or')?.totalRank; return <Tag color="green">{rank ? `#${rank}` : '未出现'}</Tag>; } },
+    { title: 'SP 广告排名', width: 130, render: (_, row) => { const rank = row.ranks?.find((item) => item.position.toLowerCase() === 'sp')?.totalRank; return <Tag color="orange">{rank ? `#${rank}` : '未出现'}</Tag>; } },
+    { title: '关键词 ABA 排名', width: 150, render: (_, row) => trafficField(row, ['abaRank', 'aba_rank', 'keywordRank', 'keyword_rank']) ?? '—' },
+    { title: '周搜索量', width: 130, render: (_, row) => trafficField(row, ['weeklyVolume', 'weekly_volume', 'searchVolume', 'search_volume']) ?? integer(row.traffic?.total ?? null) },
+    { title: '流量得分', width: 110, render: (_, row) => { const score = trafficKeywordScore(row); return score === null ? '—' : score.toFixed(2); } },
+  ];
+  return <div className="sif-rank-page"><PageTitle title="流量分析" subtitle="选择已投放的广告活动、广告组和关键词后，调用西柚数据查看流量与排名" extra={<Button type="primary" loading={loading} onClick={() => void query()}>调用西柚数据</Button>} />
+    <Card style={{ marginTop: 16 }} title="查询条件"><Row gutter={[12, 12]}><Col xs={24} md={5}><Text strong>产品</Text><Select allowClear value={product || undefined} placeholder="全部产品" options={products.map((value) => ({ value, label: value }))} onChange={(value) => { setProduct(value ?? ''); setCampaign(''); setAdGroup(''); }} style={{ width: '100%', marginTop: 6 }} /></Col><Col xs={24} md={5}><Text strong>广告活动</Text><Select allowClear showSearch value={campaign || undefined} placeholder="全部广告活动" options={campaigns.map((value) => ({ value, label: value }))} onChange={(value) => { setCampaign(value ?? ''); setAdGroup(''); }} style={{ width: '100%', marginTop: 6 }} /></Col><Col xs={24} md={5}><Text strong>广告组</Text><Select allowClear showSearch value={adGroup || undefined} placeholder="全部广告组" options={groups.map((value) => ({ value, label: value }))} onChange={(value) => setAdGroup(value ?? '')} style={{ width: '100%', marginTop: 6 }} /></Col><Col xs={24} md={5}><Text strong>ASIN</Text><Input value={asin} onChange={(event) => setAsin(event.target.value.toUpperCase())} placeholder="输入 10 位 ASIN" style={{ marginTop: 6 }} /></Col><Col xs={24} md={4}><Text strong>站点</Text><Select value={country} onChange={setCountry} options={[{ value: 'US', label: '美国站' }, { value: 'CA', label: '加拿大站' }, { value: 'UK', label: '英国站' }, { value: 'DE', label: '德国站' }]} style={{ width: '100%', marginTop: 6 }} /></Col></Row><Alert type="info" showIcon style={{ marginTop: 14 }} message="下方列表只显示当前筛选条件下已经投放的关键词；勾选后点击“调用西柚数据”。" /></Card>
+    <Card style={{ marginTop: 16 }} title={`选择关键词（${choices.length} 个）`} extra={<Tag color="blue">已选 {selectedKeys.length} 个</Tag>}><Table<TrafficAnalysisChoice> rowKey="key" size="small" dataSource={choices} rowSelection={{ selectedRowKeys: selectedKeys, onChange: (keys) => setSelectedKeys(keys.map(String)) }} pagination={tablePagination(10)} scroll={{ x: 1000 }} columns={[{ title: '关键词', dataIndex: 'keyword', width: 280 }, { title: '产品', dataIndex: 'product', width: 120 }, { title: '店铺', dataIndex: 'store', width: 90 }, { title: '广告活动', dataIndex: 'campaign', width: 260, ellipsis: true }, { title: '广告组', dataIndex: 'adGroup', width: 220, ellipsis: true }]} /></Card>
+    <Card style={{ marginTop: 16 }} title="流量分析结果" extra={<Text type="secondary">总流量 {integer(trafficTotal)} · 已保存查询结果 {results.length} 条</Text>}><Table<TrafficAnalysisResult> rowKey={(row) => row.searchTerm} dataSource={results} loading={loading} columns={columns} scroll={{ x: 1400 }} pagination={tablePagination(15)} locale={{ emptyText: '请选择投放关键词后调用西柚数据' }} /></Card>
+  </div>;
+}
+
 export function SearchTermsPage() {
   const { records, filtered } = useAds(); const [params] = useSearchParams(); const [search, setSearch] = useState('');
   const campaignParam = params.get('campaign'); const productParam = params.get('product');
