@@ -120,9 +120,11 @@ export async function syncWithClient(
 
   const remoteImports = (cloudImports.data as CloudImportRow[]).map((row) => row.payload);
   const remoteRecords = (cloudRecords.data as CloudRecordRow[]).map((row) => row.payload);
+  // Local data is authoritative. Remote rows are only a backup source for
+  // records that do not exist locally; cloud copies never overwrite local data.
   return {
-    imports: mergeBy(imports, remoteImports, (batch) => batch.fingerprint),
-    records: mergeBy(records, remoteRecords, (record) => record.id),
+    imports: mergeBy(remoteImports, imports, (batch) => batch.fingerprint),
+    records: mergeBy(remoteRecords, records, (record) => record.id),
     pushedImports: importRows.length,
     pushedRecords: recordRows.length,
     pulledImports: remoteImports.length,
