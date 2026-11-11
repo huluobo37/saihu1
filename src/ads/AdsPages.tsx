@@ -548,6 +548,30 @@ function marketValue(data: unknown, keys: string[]): string | number | null {
   return null;
 }
 
+function marketNumber(data: unknown, keys: string[]): number | null {
+  const value = marketValue(data, keys);
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/[,$￥\s]/g, ''));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function marketArray(data: unknown, keys: string[]): Array<Record<string, unknown>> {
+  if (!data || typeof data !== 'object') return [];
+  const object = data as Record<string, unknown>;
+  for (const key of keys) {
+    const value = object[key];
+    if (Array.isArray(value)) return value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'));
+  }
+  for (const nested of ['data', 'result', 'product', 'item', 'report']) {
+    const nestedValue = marketArray(object[nested], keys);
+    if (nestedValue.length) return nestedValue;
+  }
+  return [];
+}
+
 // XiYou can return an empty object (instead of an empty array) when a keyword
 // has no hourly ranking. Keep the results table resilient to that API shape.
 function hourlyTrends(row: RankLookupRow): HourlyRankPoint[] {
@@ -1187,19 +1211,41 @@ export function SorftimeMarketPage() {
     { title: 'ASIN', dataIndex: 'asin', fixed: 'left' as const, width: 150 },
     { title: '产品名称', width: 300, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['title', 'product_title', 'name']) ?? '—' },
     { title: '价格', width: 110, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['price', 'buybox_price', 'current_price']) ?? '—' },
-    { title: '月销量', width: 120, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['month_sale_volume', 'monthly_sales', 'sales_volume', 'sale_count']) ?? '—' },
-    { title: '评分', width: 100, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['rating', 'star', 'score']) ?? '—' },
+    { title: '月销量', width: 120, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['monthly_sales_volume', 'month_sale_volume', 'monthly_sales', 'sales_volume', 'sale_count']) ?? '—' },
+    { title: '评分', width: 100, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['star_rating', 'rating', 'star', 'score']) ?? '—' },
     { title: '评论数', width: 110, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['review_count', 'comment_count', 'ratings_count']) ?? '—' },
-    { title: '类目排名', width: 120, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['bsr', 'category_rank', 'sales_rank']) ?? '—' },
+    { title: '类目排名', width: 120, render: (_: unknown, row: SorftimeMarketResult) => marketValue(row.data, ['bsr', 'category_rank', 'sales_rank', 'rank']) ?? '—' },
     { title: '品牌/卖家', width: 220, render: (_: unknown, row: SorftimeMarketResult) => `${marketValue(row.data, ['brand']) ?? '—'} / ${marketValue(row.data, ['seller_name', 'seller']) ?? '—'}` },
+    { title: '返回内容', width: 300, render: (_: unknown, row: SorftimeMarketResult) => typeof row.data === 'string' ? <Text ellipsis={{ tooltip: row.data }}>{row.data}</Text> : '已解析产品字段' },
     { title: '状态', width: 220, render: (_: unknown, row: SorftimeMarketResult) => row.error ? <Tag color="error">{row.error}</Tag> : <Tag color="success">已获取</Tag> },
   ];
+  const marketBarData = results.map((row) => ({
+    asin: row.asin,
+    sales: marketNumber(row.data, ['monthly_sales_volume', 'month_sale_volume', 'monthly_sales', 'sales_volume', 'sale_count']) ?? 0,
+    price: marketNumber(row.data, ['price', 'buybox_price', 'current_price']) ?? 0,
+    rating: marketNumber(row.data, ['star_rating', 'rating', 'star', 'score']) ?? 0,
+    reviews: marketNumber(row.data, ['review_count', 'comment_count', 'ratings_count']) ?? 0,
+  }));
+  const trendData = results.flatMap((row) => marketArray(row.data, ['daily_sales', 'daily_sales_trend', 'sales_trend', 'sales_history', 'price_history', 'trend']).map((point) => ({
+    asin: row.asin,
+    date: String(point.date ?? point.day ?? point.time ?? point.period ?? ''),
+    sales: marketNumber(point, ['sales', 'sales_volume', 'daily_sales', 'units', 'quantity']),
+    price: marketNumber(point, ['price', 'sales_price', 'current_price']),
+  })).filter((point) => point.date));
+  const trendAsins = [...new Set(trendData.map((point) => point.asin))];
+  const chartColors = ['#0072B2', '#009E73', '#D55E00', '#CC79A7', '#56B4E9', '#E69F00'];
   return <div className="sif-rank-page">
     <PageTitle title="竞品市场数据" subtitle="通过 Sorftime 查询竞品 ASIN 的销量、价格、评分、评论和类目排名；查询条件与结果会自动保存" />
     <Card style={{ marginTop: 16 }} title="查询设置" extra={<Button type="primary" loading={loading} onClick={() => void query()}>查询竞品数据</Button>}>
       <Row gutter={[12, 12]}><Col xs={24} md={12}><Text strong>竞品 ASIN</Text><Input.TextArea value={asinsInput} onChange={(event) => setAsinsInput(event.target.value.toUpperCase())} placeholder="每行一个，或用逗号/空格分隔，最多 20 个" autoSize={{ minRows: 2, maxRows: 5 }} style={{ marginTop: 6 }} /></Col><Col xs={12} md={5}><Text strong>Amazon 站点</Text><Select value={country} onChange={setCountry} options={[{ value: 'US', label: '美国站' }, { value: 'GB', label: '英国站' }, { value: 'CA', label: '加拿大站' }, { value: 'DE', label: '德国站' }, { value: 'JP', label: '日本站' }]} style={{ width: '100%', marginTop: 6 }} /></Col><Col xs={12} md={7}><Text strong>查询类型</Text><Select value={operation} onChange={setOperation} options={[{ value: 'product_detail', label: '基础销量与价格' }, { value: 'product_report', label: '产品分析报告' }]} style={{ width: '100%', marginTop: 6 }} /></Col></Row>
       <Alert type="info" showIcon style={{ marginTop: 16 }} message="数据来自 Sorftime MCP。密钥只在 Supabase Edge Function 中使用，浏览器不会接触密钥。" />
     </Card>
+    {!!marketBarData.length && <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+      <Col xs={24} xl={14}><ChartCard title="竞品月销量与价格柱状图" height={360} extra={<Text type="secondary">数据来自 Sorftime 返回结果</Text>}><ResponsiveContainer width="100%" height="100%"><BarChart data={marketBarData} margin={{ top: 18, right: 28, left: 8, bottom: 18 }}><CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="asin" /><YAxis yAxisId="sales" /><YAxis yAxisId="price" orientation="right" /><Tooltip /><Legend /><Bar yAxisId="sales" dataKey="sales" name="月销量" fill="#0072B2" radius={[5, 5, 0, 0]} /><Bar yAxisId="price" dataKey="price" name="价格" fill="#E69F00" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></ChartCard></Col>
+      <Col xs={24} xl={10}><ChartCard title="评分与评论数柱状图" height={360}><ResponsiveContainer width="100%" height="100%"><BarChart data={marketBarData} margin={{ top: 18, right: 20, left: 8, bottom: 18 }}><CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="asin" /><YAxis /><Tooltip /><Legend /><Bar dataKey="rating" name="评分" fill="#009E73" radius={[5, 5, 0, 0]} /><Bar dataKey="reviews" name="评论数" fill="#CC79A7" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></ChartCard></Col>
+    </Row>}
+    {trendAsins.length > 0 && <ChartCard title="Sorftime 历史销量与价格折线图" height={390} extra={<Text type="secondary">仅展示接口实际返回的历史序列</Text>}><ResponsiveContainer width="100%" height="100%"><LineChart data={trendData} margin={{ top: 18, right: 30, left: 8, bottom: 18 }}><CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="date" /><YAxis yAxisId="sales" /><YAxis yAxisId="price" orientation="right" /><Tooltip /><Legend />{trendAsins.map((asin, index) => <Line key={`${asin}-sales`} yAxisId="sales" type="monotone" dataKey={(point: (typeof trendData)[number]) => point.asin === asin ? point.sales : null} name={`${asin} 销量`} stroke={chartColors[index % chartColors.length]} dot={false} connectNulls />)}{trendAsins.map((asin, index) => <Line key={`${asin}-price`} yAxisId="price" type="monotone" dataKey={(point: (typeof trendData)[number]) => point.asin === asin ? point.price : null} name={`${asin} 价格`} stroke={chartColors[(index + 3) % chartColors.length]} strokeDasharray="5 4" dot={false} connectNulls />)}</LineChart></ResponsiveContainer></ChartCard>}
+    {results.length > 0 && !trendAsins.length && <Alert type="info" showIcon style={{ marginTop: 16 }} message="当前 Sorftime 返回了产品指标，但未返回可绘制的历史销量/价格序列；柱状图仍可用于比较当前结果。" />}
     <Card style={{ marginTop: 16 }} title="竞品结果" extra={<Text type="secondary">{results.length} 个 ASIN</Text>}>
       <Table<SorftimeMarketResult> rowKey="asin" loading={loading} dataSource={results} columns={columns} scroll={{ x: 1400 }} pagination={tablePagination(20)} locale={{ emptyText: '请输入 ASIN 后查询 Sorftime 数据' }} />
     </Card>
